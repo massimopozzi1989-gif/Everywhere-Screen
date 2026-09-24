@@ -81,7 +81,15 @@ enum Page {
       display: grid; place-items: center; touch-action: manipulation; padding: 0; }
     #bar button.on { background: rgba(255, 255, 255, .2); }
     #bar button.off { opacity: .45; }
-    #bar svg { width: 22px; height: 22px; }
+    #bar svg { width: 22px; height: 22px; flex: none; }
+    #bar.ctl-off { opacity: 1; }
+    #bCtl { width: auto !important; display: flex !important; gap: 6px; padding: 0 12px 0 10px !important;
+      font: 600 14px -apple-system, system-ui, sans-serif; white-space: nowrap; }
+    #bCtl.off { opacity: 1; background: rgba(255, 159, 10, .9); color: #000; }
+    #toast { position: fixed; left: 50%; top: max(20px, env(safe-area-inset-top)); transform: translate(-50%, -8px);
+      padding: 10px 16px; border-radius: 12px; background: rgba(44, 44, 46, .92); color: #fff; opacity: 0;
+      font: 600 15px -apple-system, system-ui, sans-serif; pointer-events: none; transition: opacity .2s, transform .2s; }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
     #pair { position: fixed; inset: 0; display: grid; place-items: center; background: #000; color: #f2f2f2;
       font: 17px -apple-system, system-ui, sans-serif; padding: 24px; box-sizing: border-box; }
     [hidden] { display: none !important; }
@@ -106,8 +114,9 @@ enum Page {
     <textarea id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     <div id="bar" hidden>
       <button id="bKb" aria-label="Tastiera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M17.5 10h.01M8 14h8"/></svg></button>
-      <button id="bCtl" aria-label="Controllo del Mac"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3.5l12 7.2-5.3 1.4-2.6 5.4z"/></svg></button>
+      <button id="bCtl" aria-label="Controllo del Mac"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3.5l12 7.2-5.3 1.4-2.6 5.4z"/></svg><span id="ctlLabel">Controllo attivo</span></button>
     </div>
+    <div id="toast"></div>
     <div id="pair" hidden>
       <div class="card">
         <h1>Everywhere Screen</h1>
@@ -456,10 +465,21 @@ enum Page {
       enabled = !enabled;
       if (!enabled) kb.blur();
       updateBar();
+      toast(enabled ? 'Controllo del Mac attivo' : 'Solo schermo: i tocchi non controllano il Mac');
     });
+    let toastTimer = null;
+    function toast(text) {
+      const el = $('toast');
+      el.textContent = text;
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+    }
     function updateBar() {
       bar.hidden = !allowed;
       $('bCtl').classList.toggle('off', !enabled);
+      bar.classList.toggle('ctl-off', !enabled);
+      $('ctlLabel').textContent = enabled ? 'Controllo attivo' : 'Solo schermo';
       $('bKb').hidden = !enabled;
     }
 
