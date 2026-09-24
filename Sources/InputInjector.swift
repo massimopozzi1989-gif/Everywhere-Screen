@@ -14,10 +14,14 @@ final class InputInjector {
     private var clickCount = 1
     private var askedPermission = false
 
-    static var hasPermission: Bool { CGPreflightPostEventAccess() }
+    /// La voce "Accessibilità" delle Impostazioni. Non si usa CGPreflightPostEventAccess: controlla
+    /// un permesso TCC diverso (PostEvent) e il risultato resta in cache nel processo, per cui
+    /// continuerebbe a dire "no" anche dopo che l'utente ha attivato Accessibilità.
+    static var hasPermission: Bool { AXIsProcessTrusted() }
 
     static func requestPermission() {
-        CGRequestPostEventAccess()
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
     }
 
     func handle(_ msg: [String: Any], display: CGDirectDisplayID) {
