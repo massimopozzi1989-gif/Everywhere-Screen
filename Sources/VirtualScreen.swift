@@ -45,7 +45,25 @@ final class VirtualScreen {
         guard display.apply(settings) else { return false }
         self.width = w
         self.height = h
+        ensureHiDPIMode()
         return true
+    }
+
+    /// macOS offre per ogni misura sia la modalità HiDPI (2x) sia quella 1:1, e a volte sceglie
+    /// la 1:1 (per esempio per una preferenza salvata sullo stesso seriale): interfaccia minuscola.
+    /// Qui si seleziona esplicitamente la modalità HiDPI.
+    func ensureHiDPIMode() {
+        let id = displayID
+        if let current = CGDisplayCopyDisplayMode(id),
+           current.width == width, current.height == height, current.pixelWidth == width * 2 { return }
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: true] as CFDictionary
+        guard let modes = CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode],
+              let hiDPI = modes.first(where: { $0.width == width && $0.height == height && $0.pixelWidth == width * 2 && $0.isUsableForDesktopGUI() })
+        else { return }
+        var config: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&config) == .success, let config else { return }
+        CGConfigureDisplayWithDisplayMode(config, id, hiDPI, nil)
+        CGCompleteDisplayConfiguration(config, .permanently)
     }
 
     private static func clamp(_ v: Int) -> Int { min(max(v, minPoints), maxPoints) }

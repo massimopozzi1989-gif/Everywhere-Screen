@@ -66,6 +66,11 @@ enum Page {
     #surf { position: fixed; inset: 0; touch-action: none; }
     #s { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 14px; color: #8e8e93;
       font: 13px -apple-system, system-ui, sans-serif; pointer-events: none; }
+    #ident { position: fixed; left: 50%; top: 50%; width: 38vmin; height: 38vmin; margin: -19vmin 0 0 -19vmin;
+      display: grid; place-items: center; border-radius: 9vmin; background: rgba(10, 132, 255, .88); color: #fff;
+      font: 700 26vmin -apple-system, system-ui, sans-serif; pointer-events: none; opacity: 0;
+      transform: scale(.85); transition: opacity .2s, transform .2s; }
+    #ident.show { opacity: 1; transform: scale(1); }
     #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px;
       border: 0; padding: 0; resize: none; }
     #bar { position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
@@ -97,6 +102,7 @@ enum Page {
     <img id="i" alt="" hidden>
     <div id="surf"></div>
     <div id="s">Connessione…</div>
+    <div id="ident"></div>
     <textarea id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     <div id="bar" hidden>
       <button id="bKb" aria-label="Tastiera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M17.5 10h.01M8 14h8"/></svg></button>
@@ -207,6 +213,7 @@ enum Page {
         const m = JSON.parse(e.data);
         if (m.t === 'init') { player.reset(m.codec); status(''); }
         else if (m.t === 'info') { allowed = !!m.control; updateBar(); }
+        else if (m.t === 'identify') identify(m.n);
       };
       sock.onclose = () => {
         if (ws !== sock) return;
@@ -214,6 +221,15 @@ enum Page {
         status('Riconnessione…');
         retry = setTimeout(boot, 1000);   // boot ricontrolla anche l'abbinamento
       };
+    }
+
+    let identTimer = null;
+    function identify(n) {
+      const el = $('ident');
+      el.textContent = n;
+      el.classList.add('show');
+      clearTimeout(identTimer);
+      identTimer = setTimeout(() => el.classList.remove('show'), 2500);
     }
 
     const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };

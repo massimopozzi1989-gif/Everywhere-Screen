@@ -15,6 +15,8 @@ final class Slot {
     var sourceName: String?
     var error: String?
     var restartWork: DispatchWorkItem?
+    /// Dimensione dello schermo quando è partita la cattura: se cambia va riavviata.
+    var capturedSize: CGSize?
 
     init(index: Int, hub: StreamHub, width: Int, height: Int, autoFit: Bool) {
         self.index = index
@@ -29,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let port: UInt16 = 5050
     private let web = WebApp()
     private let injector = InputInjector()
+    private let arrangement = ArrangementWindowController()
     private let defaults = UserDefaults.standard
 
     private var statusItem: NSStatusItem!
@@ -75,15 +78,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             serverError = "Porta \(port) non disponibile: \(error.localizedDescription)"
         }
 
-        // Schermi aggiunti/rimossi o cambi di risoluzione: riavvia le catture.
+        // Schermi aggiunti/rimossi, ridimensionati o spostati.
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             self.screensChangedWork?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.slots.values.forEach { self?.restartCapture($0) } }
+            let work = DispatchWorkItem { [weak self] in self?.screensChanged() }
             self.screensChangedWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
         }
+
+        let m = arrangement.model
+        m.preset = defaults.string(forKey: "arrangement").flatMap(ArrangementPreset.init)
+        m.provider = { [weak self] in self?.displayBoxes() ?? [] }
+        m.onPreset = { [weak self] preset in self?.applyPreset(preset) }
+        m.onMove = { [weak self] id, origin in self?.moveDisplay(id, to: origin) }
+        m.onIdentify = { [weak self] in self?.web.allHubs.forEach { $0.identify() } }
+        m.onOpenSettings = { [weak self] in self?.openDisplays() }
 
         if !CGPreflightScreenCaptureAccess() {
             CGRequestScreenCaptureAccess()
@@ -120,7 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let v = slot.virtual { slot.width = v.width; slot.height = v.height }
 
         hub.onViewersChanged = { [weak self, weak slot] n in
-            DispatchQueue.main.async { slot?.viewers = n; self?.updateIcon() }
+            DispatchQueue.main.async {
+                slot?.viewers = n
+                self?.updateIcon()
+                if self?.arrangement.isVisible == true { self?.arrangement.model.reload() }
+            }
         }
         hub.onFit = { [weak self] w, h in
             DispatchQueue.main.async { self?.fit(channel: index, width: w, height: h) }
@@ -206,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try await slot.capturer.start(displayID: id)
                 slot.sourceName = name
                 slot.error = nil
+                slot.capturedSize = CGDisplayBounds(id).size
             } catch {
                 slot.sourceName = nil
                 slot.error = CGPreflightScreenCaptureAccess()
@@ -233,6 +249,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let streaming = slots.values.contains { $0.viewers > 0 }
         let symbol = hasError ? "exclamationmark.triangle" : (streaming ? "macbook.and.ipad" : "rectangle.on.rectangle")
         statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Everywhere Screen")
+    }
+
+    // MARK: - Disposizione
+
+    private func screensChanged() {
+        // Riavvia solo le catture il cui schermo è cambiato di dimensione (spostarlo non conta).
+        for slot in slots.values {
+            slot.virtual?.ensureHiDPIMode()
+            let current = slot.virtual.map { CGDisplayBounds($0.displayID).size }
+            if slot.error != nil || slot.capturedSize == nil || (current != nil && current != slot.capturedSize) {
+                restartCapture(slot)
+            }
+        }
+        reapplyPresetIfNeeded()
+        arrangement.model.reload()
+    }
+
+    private func displayBoxes() -> [DisplayBox] {
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &count)
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        CGGetActiveDisplayList(count, &ids, &count)
+
+        let mainID = CGMainDisplayID()
+        return ids.prefix(Int(count)).map { id in
+            let slot = slots.values.first { $0.virtual?.displayID == id }
+            let screenName = NSScreen.screens.first { $0.displayID == id }?.localizedName
+            let name = slot.map { "Schermo \($0.index)" } ?? (id == mainID ? "Mac" : screenName ?? "Monitor")
+            return DisplayBox(id: id, name: name, frame: CGDisplayBounds(id), isMain: id == mainID,
+                              slot: slot?.index, connected: (slot?.viewers ?? 0) > 0)
+        }
+    }
+
+    /// Origini degli schermi dei tablet (in ordine di numero) per una disposizione pronta.
+    private func presetOrigins(_ preset: ArrangementPreset) -> [CGDirectDisplayID: CGPoint] {
+        let boxes = displayBoxes()
+        guard let main = boxes.first(where: \.isMain) else { return [:] }
+        let tablets = boxes.filter { $0.slot != nil }.sorted { $0.slot! < $1.slot! }
+        let fixed = boxes.filter { !$0.isMain && $0.slot == nil }.map(\.frame)
+        let origins = DisplayLayout.origins(for: preset, main: main.frame, fixed: fixed, tablets: tablets.map(\.frame.size))
+        return Dictionary(uniqueKeysWithValues: zip(tablets.map(\.id), origins))
+    }
+
+    private func applyPreset(_ preset: ArrangementPreset) {
+        DisplayLayout.apply(presetOrigins(preset))
+        arrangement.model.preset = preset
+        defaults.set(preset.rawValue, forKey: "arrangement")
+        arrangement.model.reload()
+    }
+
+    /// Dopo una rotazione o un nuovo schermo la disposizione pronta scelta resta valida.
+    private func reapplyPresetIfNeeded() {
+        guard let preset = arrangement.model.preset else { return }
+        let target = presetOrigins(preset)
+        if target.contains(where: { CGDisplayBounds($0.key).origin != $0.value }) {
+            DisplayLayout.apply(target)
+        }
+    }
+
+    private func moveDisplay(_ id: CGDirectDisplayID, to origin: CGPoint) -> CGPoint? {
+        let bounds = CGDisplayBounds(id)
+        let others = displayBoxes().filter { $0.id != id }.map(\.frame)
+        let placed = DisplayLayout.snap(CGRect(origin: origin, size: bounds.size), to: others)
+        guard DisplayLayout.apply([id: placed]) else { return nil }
+        // Disposizione libera: non riapplicare più quella pronta.
+        defaults.removeObject(forKey: "arrangement")
+        return CGDisplayBounds(id).origin
+    }
+
+    @objc private func showArrangement() {
+        arrangement.show()
     }
 
     // MARK: - Menu
@@ -292,7 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let login = action("Avvia al login", #selector(toggleLogin), nil)
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
-        menu.addItem(action("Disposizione schermi…", #selector(openDisplays), nil))
+        menu.addItem(action("Disposizione schermi…", #selector(showArrangement), nil))
         menu.addItem(action("Impostazioni Registrazione Schermo…", #selector(openPrivacy), nil))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Esci da Everywhere Screen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))

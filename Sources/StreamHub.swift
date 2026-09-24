@@ -213,6 +213,13 @@ final class StreamHub {
         }
     }
 
+    /// Mostra il numero dello schermo sui tablet collegati.
+    func identify() {
+        queue.async {
+            self.viewers.values.forEach { $0.ws.send(json: ["t": "identify", "n": self.channel]) }
+        }
+    }
+
     func closeAll() {
         queue.async {
             self.viewers.values.forEach { $0.ws.close() }
