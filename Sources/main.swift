@@ -1,0 +1,487 @@
+import AppKit
+import ScreenCaptureKit
+import ServiceManagement
+
+/// Uno schermo esteso: schermo virtuale + cattura + canale con lo stesso numero.
+final class Slot {
+    let index: Int
+    let hub: StreamHub
+    let capturer = ScreenCapturer()
+    var virtual: VirtualScreen?
+    var autoFit: Bool
+    var width: Int
+    var height: Int
+    var viewers = 0
+    var sourceName: String?
+    var error: String?
+    var restartWork: DispatchWorkItem?
+
+    init(index: Int, hub: StreamHub, width: Int, height: Int, autoFit: Bool) {
+        self.index = index
+        self.hub = hub
+        self.width = width
+        self.height = height
+        self.autoFit = autoFit
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private let port: UInt16 = 5050
+    private let web = WebApp()
+    private let injector = InputInjector()
+    private let defaults = UserDefaults.standard
+
+    private var statusItem: NSStatusItem!
+    private var slots: [Int: Slot] = [:]
+    private var panels: [String: PairingPanel] = [:]
+    private var serverError: String?
+    private var screensChangedWork: DispatchWorkItem?
+
+    private var quality: Double { defaults.object(forKey: "quality") as? Double ?? 0.7 }
+    private var scale: Double { defaults.object(forKey: "scale") as? Double ?? 1.0 }
+    private var fps: Int { defaults.object(forKey: "fps") as? Int ?? 30 }
+
+    /// Dimensioni in punti (HiDPI). Il verticale si ottiene con "Ruota" o con l'adattamento automatico.
+    private let presets: [(String, Int, Int)] = [
+        ("iPad 10,2\" (7ª–9ª gen.)", 1080, 810),
+        ("iPad 10,9\" / iPad Air 11\"", 1180, 820),
+        ("iPad Pro 11\"", 1194, 834),
+        ("iPad Pro / Air 13\"", 1366, 1024),
+        ("iPad mini", 1133, 744),
+        ("Tablet 16:10", 1280, 800),
+        ("16:9", 1600, 900),
+    ]
+
+    // MARK: - Avvio
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let menu = NSMenu()
+        menu.delegate = self
+        statusItem.menu = menu
+
+        web.touchIcon = Icon.png(size: 180, macStyle: false)
+        web.pairing.onShowRequest = { [weak self] request in self?.showPairing(request) }
+        web.pairing.onHideRequest = { [weak self] id in self?.panels.removeValue(forKey: id)?.close() }
+        web.server.onStateChanged = { [weak self] err in
+            DispatchQueue.main.async { self?.serverError = err; self?.updateIcon() }
+        }
+        injector.onPermissionMissing = { [weak self] in
+            DispatchQueue.main.async { self?.updateIcon() }
+        }
+        do {
+            try web.start(port: port)
+        } catch {
+            serverError = "Porta \(port) non disponibile: \(error.localizedDescription)"
+        }
+
+        // Schermi aggiunti/rimossi o cambi di risoluzione: riavvia le catture.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.screensChangedWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.slots.values.forEach { self?.restartCapture($0) } }
+            self.screensChangedWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+        }
+
+        if !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess()
+        }
+
+        let saved = defaults.dictionary(forKey: "screens") ?? [:]
+        for (key, value) in saved.sorted(by: { $0.key < $1.key }) {
+            guard let i = Int(key), (1...Edition.maxScreens).contains(i), let cfg = value as? [String: Any] else { continue }
+            // Accetta numeri o stringhe (es. valori scritti a mano con `defaults write`).
+            func int(_ k: String, _ fallback: Int) -> Int { (cfg[k] as? NSNumber)?.intValue ?? (cfg[k] as? String).flatMap(Int.init) ?? fallback }
+            addSlot(index: i, width: int("w", 1080), height: int("h", 810), autoFit: int("auto", 1) != 0)
+        }
+        if slots.isEmpty { addSlot(index: 1, width: 1080, height: 810, autoFit: true) }
+        updateIcon()
+    }
+
+    private func showPairing(_ request: PairingManager.Request) {
+        let panel = PairingPanel(request: request) { [weak self] in
+            self?.web.pairing.cancel(id: request.id)
+            self?.panels[request.id] = nil
+        }
+        panels[request.id] = panel
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Slot
+
+    private func addSlot(index: Int, width: Int, height: Int, autoFit: Bool) {
+        let hub = StreamHub(channel: index, queue: web.queue)
+        hub.configure(quality: quality, fps: fps)
+        let slot = Slot(index: index, hub: hub, width: width, height: height, autoFit: autoFit)
+        slot.virtual = VirtualScreen(index: index, width: width, height: height)
+        if let v = slot.virtual { slot.width = v.width; slot.height = v.height }
+
+        hub.onViewersChanged = { [weak self, weak slot] n in
+            DispatchQueue.main.async { slot?.viewers = n; self?.updateIcon() }
+        }
+        hub.onFit = { [weak self] w, h in
+            DispatchQueue.main.async { self?.fit(channel: index, width: w, height: h) }
+        }
+        hub.onInput = { [injector] message, display in injector.handle(message, display: display) }
+        slot.capturer.onPixelBuffer = { [hub] pixelBuffer in hub.push(pixelBuffer) }
+        slot.capturer.onStop = { [weak self, weak slot] error in
+            DispatchQueue.main.async {
+                guard let self, let slot, self.slots[index] === slot else { return }
+                slot.error = "Cattura interrotta: \(error.localizedDescription)"
+                self.updateIcon()
+                self.scheduleRestart(slot, after: 2)
+            }
+        }
+
+        slots[index] = slot
+        web.register(hub)
+        save()
+        restartCapture(slot)
+    }
+
+    private func removeSlot(_ slot: Slot) {
+        slots[slot.index] = nil
+        slot.restartWork?.cancel()
+        web.unregister(channel: slot.index)
+        slot.hub.closeAll()
+        save()
+        Task { @MainActor in
+            await slot.capturer.stop()
+            slot.virtual = nil   // rilasciarlo rimuove lo schermo virtuale
+        }
+        updateIcon()
+    }
+
+    private func fit(channel: Int, width: Int, height: Int) {
+        guard let slot = slots[channel], slot.autoFit else { return }
+        resize(slot, width: width, height: height)
+    }
+
+    private func resize(_ slot: Slot, width: Int, height: Int) {
+        guard let v = slot.virtual, (width, height) != (v.width, v.height) else { return }
+        if v.resize(width: width, height: height) {
+            slot.width = v.width
+            slot.height = v.height
+            save()
+            scheduleRestart(slot, after: 1)
+        }
+    }
+
+    private func save() {
+        var out: [String: [String: Int]] = [:]
+        for slot in slots.values {
+            out[String(slot.index)] = ["w": slot.width, "h": slot.height, "auto": slot.autoFit ? 1 : 0]
+        }
+        defaults.set(out, forKey: "screens")
+    }
+
+    // MARK: - Cattura
+
+    private func scheduleRestart(_ slot: Slot, after seconds: Double) {
+        slot.restartWork?.cancel()
+        let work = DispatchWorkItem { [weak self, weak slot] in
+            guard let self, let slot else { return }
+            self.restartCapture(slot)
+        }
+        slot.restartWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func restartCapture(_ slot: Slot) {
+        guard slots[slot.index] === slot else { return }
+        guard let (id, name) = source(for: slot) else {
+            slot.error = "Nessuno schermo disponibile"
+            updateIcon()
+            return
+        }
+        slot.capturer.scale = scale
+        slot.capturer.fps = fps
+        slot.hub.configure(quality: quality, fps: fps)
+        slot.hub.displayID = id
+        Task { @MainActor in
+            do {
+                try await slot.capturer.start(displayID: id)
+                slot.sourceName = name
+                slot.error = nil
+            } catch {
+                slot.sourceName = nil
+                slot.error = CGPreflightScreenCaptureAccess()
+                    ? "Errore cattura: \(error.localizedDescription)"
+                    : "Manca il permesso Registrazione Schermo"
+                scheduleRestart(slot, after: 3)
+            }
+            updateIcon()
+        }
+    }
+
+    /// Lo schermo virtuale dello slot. Se l'API privata non è disponibile (es. dopo un
+    /// aggiornamento di macOS), lo slot 1 ripiega su uno schermo secondario esistente.
+    private func source(for slot: Slot) -> (CGDirectDisplayID, String)? {
+        if let v = slot.virtual { return (v.displayID, "Everywhere Screen \(slot.index) (virtuale)") }
+        guard slot.index == 1 else { return nil }
+        let mainID = CGMainDisplayID()
+        guard let screen = NSScreen.screens.first(where: { $0.displayID != mainID }) ?? NSScreen.main,
+              let id = screen.displayID else { return nil }
+        return (id, screen.localizedName)
+    }
+
+    private func updateIcon() {
+        let hasError = serverError != nil || slots.values.contains { $0.error != nil }
+        let streaming = slots.values.contains { $0.viewers > 0 }
+        let symbol = hasError ? "exclamationmark.triangle" : (streaming ? "macbook.and.ipad" : "rectangle.on.rectangle")
+        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Everywhere Screen")
+    }
+
+    // MARK: - Menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let base = "http://\(NetInfo.localIPv4() ?? "IP-del-Mac"):\(port)"
+
+        menu.addItem(action("\(base)  (clic per copiare)", #selector(copyURL(_:)), base))
+        if let serverError { menu.addItem(disabled(serverError)) }
+        menu.addItem(.separator())
+
+        for slot in slots.values.sorted(by: { $0.index < $1.index }) {
+            let clients = slot.viewers == 1 ? "1 dispositivo" : "\(slot.viewers) dispositivi"
+            let parent = NSMenuItem(title: "Schermo \(slot.index) — \(slot.width)×\(slot.height) · \(clients)", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            sub.addItem(action("Copia indirizzo  \(base)/\(slot.index)", #selector(copyURL(_:)), "\(base)/\(slot.index)"))
+            sub.addItem(disabled(slot.error ?? "Sorgente: \(slot.sourceName ?? "—")"))
+            if slot.virtual != nil {
+                sub.addItem(.separator())
+                let auto = action("Adatta automaticamente al dispositivo", #selector(toggleAutoFit(_:)), slot.index)
+                auto.state = slot.autoFit ? .on : .off
+                sub.addItem(auto)
+                for (name, w, h) in presets {
+                    let portrait = slot.height > slot.width
+                    let (pw, ph) = portrait ? (h, w) : (w, h)
+                    let mi = action("\(name)  \(pw)×\(ph)", #selector(setPreset(_:)), [slot.index, pw, ph])
+                    mi.state = (pw, ph) == (slot.width, slot.height) ? .on : .off
+                    sub.addItem(mi)
+                }
+                sub.addItem(action("Ruota (orizzontale/verticale)", #selector(rotate(_:)), slot.index))
+            }
+            sub.addItem(.separator())
+            sub.addItem(action("Rimuovi schermo \(slot.index)", #selector(removeScreen(_:)), slot.index))
+            parent.submenu = sub
+            menu.addItem(parent)
+        }
+        let add = action("Aggiungi schermo", #selector(addScreen), nil)
+        add.isEnabled = slots.count < Edition.maxScreens
+        menu.addItem(add)
+        menu.addItem(.separator())
+
+        menu.addItem(devicesMenu())
+        if Edition.inputAllowed && !InputInjector.hasPermission {
+            menu.addItem(action("⚠︎ Consenti il controllo dal tablet (Accessibilità)…", #selector(openAccessibility), nil))
+        }
+        menu.addItem(.separator())
+
+        menu.addItem(optionMenu("Qualità", key: "quality", current: quality,
+                                options: [("Bassa (meno banda)", 0.5), ("Media", 0.7), ("Alta", 0.85), ("Massima", 0.95)]))
+        menu.addItem(optionMenu("Risoluzione stream", key: "scale", current: scale,
+                                options: [("Retina (100%)", 1.0), ("75%", 0.75), ("50%", 0.5)]))
+        menu.addItem(optionMenu("Frame al secondo", key: "fps", current: Double(fps),
+                                options: [("15", 15), ("30", 30), ("60", 60)]))
+        menu.addItem(.separator())
+
+        let login = action("Avvia al login", #selector(toggleLogin), nil)
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
+        menu.addItem(action("Disposizione schermi…", #selector(openDisplays), nil))
+        menu.addItem(action("Impostazioni Registrazione Schermo…", #selector(openPrivacy), nil))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Esci da Everywhere Screen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    private func devicesMenu() -> NSMenuItem {
+        let devices = web.pairing.devices
+        let parent = NSMenuItem(title: "Dispositivi abbinati (\(devices.count))", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        if devices.isEmpty {
+            sub.addItem(disabled("Nessuno: apri l'indirizzo sul tablet per abbinarlo"))
+        }
+        for device in devices {
+            let item = NSMenuItem(title: device.name, action: nil, keyEquivalent: "")
+            let dsub = NSMenu()
+            dsub.addItem(disabled("Abbinato il \(device.created.formatted(date: .abbreviated, time: .shortened))"))
+            if Edition.inputAllowed {
+                let control = action("Può controllare il Mac", #selector(toggleDeviceControl(_:)), device.id)
+                control.state = device.control ? .on : .off
+                dsub.addItem(control)
+            }
+            dsub.addItem(action("Rimuovi abbinamento", #selector(removeDevice(_:)), device.id))
+            item.submenu = dsub
+            sub.addItem(item)
+        }
+        parent.submenu = sub
+        return parent
+    }
+
+    private func action(_ title: String, _ selector: Selector, _ object: Any?) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+        mi.target = self
+        mi.representedObject = object
+        return mi
+    }
+
+    private func disabled(_ title: String) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        mi.isEnabled = false
+        return mi
+    }
+
+    private func optionMenu(_ title: String, key: String, current: Double, options: [(String, Double)]) -> NSMenuItem {
+        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        for (label, value) in options {
+            let mi = action(label, #selector(setOption(_:)), [key: value])
+            mi.state = abs(current - value) < 0.001 ? .on : .off
+            sub.addItem(mi)
+        }
+        parent.submenu = sub
+        return parent
+    }
+
+    // MARK: - Azioni
+
+    @objc private func copyURL(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? String else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url, forType: .string)
+    }
+
+    @objc private func addScreen() {
+        guard let index = (1...Edition.maxScreens).first(where: { slots[$0] == nil }) else { return }
+        addSlot(index: index, width: 1080, height: 810, autoFit: true)
+        if slots[index]?.virtual == nil {
+            slots[index]?.error = "Impossibile creare lo schermo virtuale"
+            updateIcon()
+        }
+    }
+
+    @objc private func removeScreen(_ sender: NSMenuItem) {
+        guard let i = sender.representedObject as? Int, let slot = slots[i] else { return }
+        removeSlot(slot)
+    }
+
+    @objc private func toggleAutoFit(_ sender: NSMenuItem) {
+        guard let i = sender.representedObject as? Int, let slot = slots[i] else { return }
+        slot.autoFit.toggle()
+        save()
+    }
+
+    @objc private func setPreset(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? [Int], v.count == 3, let slot = slots[v[0]] else { return }
+        slot.autoFit = false   // scelta manuale: il dispositivo non la sovrascrive
+        resize(slot, width: v[1], height: v[2])
+        save()
+    }
+
+    @objc private func rotate(_ sender: NSMenuItem) {
+        guard let i = sender.representedObject as? Int, let slot = slots[i] else { return }
+        slot.autoFit = false
+        resize(slot, width: slot.height, height: slot.width)
+        save()
+    }
+
+    @objc private func setOption(_ sender: NSMenuItem) {
+        guard let dict = sender.representedObject as? [String: Double], let (key, value) = dict.first else { return }
+        if key == "fps" { defaults.set(Int(value), forKey: key) } else { defaults.set(value, forKey: key) }
+        if key == "quality" {
+            slots.values.forEach { $0.hub.configure(quality: value, fps: fps) }
+        } else {
+            slots.values.forEach { restartCapture($0) }
+        }
+    }
+
+    @objc private func toggleDeviceControl(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let device = web.pairing.devices.first(where: { $0.id == id }) else { return }
+        web.pairing.setControl(!device.control, deviceID: id)
+        web.allHubs.forEach { $0.setControl(!device.control, deviceID: id) }
+    }
+
+    @objc private func removeDevice(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        web.pairing.remove(deviceID: id)
+        web.allHubs.forEach { $0.disconnect(deviceID: id) }
+    }
+
+    @objc private func toggleLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            serverError = "Avvio al login: \(error.localizedDescription)"
+            updateIcon()
+        }
+    }
+
+    @objc private func openAccessibility() {
+        InputInjector.requestPermission()
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+
+    @objc private func openDisplays() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Displays-Settings.extension")!)
+    }
+
+    @objc private func openPrivacy() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+    }
+}
+
+extension NSScreen {
+    var displayID: CGDirectDisplayID? {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+}
+
+enum NetInfo {
+    /// IPv4 della rete locale (preferisce en0, cioè il Wi-Fi sui Mac Apple Silicon).
+    static func localIPv4() -> String? {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
+
+        var found: [String: String] = [:]
+        for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let ifa = ptr.pointee
+            guard let addr = ifa.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET),
+                  (ifa.ifa_flags & UInt32(IFF_UP)) != 0, (ifa.ifa_flags & UInt32(IFF_LOOPBACK)) == 0
+            else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 {
+                found[String(cString: ifa.ifa_name)] = String(cString: host)
+            }
+        }
+        return found["en0"] ?? found["en1"] ?? found.values.sorted().first
+    }
+}
+
+// build.sh genera l'icona dell'app con: EverywhereScreen --render-icon <cartella.iconset>
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--render-icon" {
+    let dir = URL(fileURLWithPath: CommandLine.arguments[2])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for base in [16, 32, 128, 256, 512] {
+        for scale in [1, 2] {
+            let name = scale == 1 ? "icon_\(base)x\(base).png" : "icon_\(base)x\(base)@2x.png"
+            try? Icon.png(size: base * scale, macStyle: true)?.write(to: dir.appendingPathComponent(name))
+        }
+    }
+    exit(0)
+}
+
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.setActivationPolicy(.accessory)
+app.run()
