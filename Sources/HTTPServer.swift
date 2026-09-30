@@ -31,10 +31,19 @@ final class HTTPServer {
     var onRequest: ((HTTPRequest, HTTPConnection) -> Void)?
     var onStateChanged: ((String?) -> Void)?
     private var listener: NWListener?
+    /// Tempo massimo per ricevere gli header: le connessioni che non li completano mai
+    /// (client sparito, slowloris) altrimenti resterebbero aperte per sempre.
+    private static let headerTimeout: TimeInterval = 10
 
     func start(port: UInt16) throws {
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
+        // Scopre i tablet spariti senza chiudere la connessione (standby, Wi-Fi perso) anche
+        // quando lo schermo è fermo e non si sta inviando nulla.
+        tcp.enableKeepalive = true
+        tcp.keepaliveIdle = 15
+        tcp.keepaliveInterval = 5
+        tcp.keepaliveCount = 3
         let params = NWParameters(tls: nil, tcp: tcp)
         params.allowLocalEndpointReuse = true
 
@@ -53,22 +62,26 @@ final class HTTPServer {
 
     private func accept(_ conn: NWConnection) {
         conn.start(queue: queue)
-        read(conn, buffer: Data())
+        let timeout = DispatchWorkItem { conn.cancel() }
+        queue.asyncAfter(deadline: .now() + Self.headerTimeout, execute: timeout)
+        read(conn, buffer: Data(), timeout: timeout)
     }
 
-    private func read(_ conn: NWConnection, buffer: Data) {
+    private func read(_ conn: NWConnection, buffer: Data, timeout: DispatchWorkItem) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 16384) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             var buf = buffer
             if let data { buf.append(data) }
             if let end = buf.range(of: Data("\r\n\r\n".utf8)) {
+                timeout.cancel()
                 let head = String(decoding: buf[..<end.lowerBound], as: UTF8.self)
                 guard let request = Self.parse(head, remote: conn.endpoint) else { conn.cancel(); return }
                 self.onRequest?(request, HTTPConnection(conn: conn, leftover: Data(buf[end.upperBound...])))
             } else if isComplete || error != nil || buf.count > 65_536 {
+                timeout.cancel()
                 conn.cancel()
             } else {
-                self.read(conn, buffer: buf)
+                self.read(conn, buffer: buf, timeout: timeout)
             }
         }
     }

@@ -35,6 +35,21 @@ final class H264Encoder {
     private let lock = NSLock()
     private var forceKeyframe = true
 
+    /// La prima sessione hardware del processo costa ~0,6 s (le successive ~50 ms): la si crea
+    /// in background all'avvio, così il primo tablet che si collega non aspetta.
+    static func warmUp() {
+        DispatchQueue.global(qos: .utility).async {
+            let encoder = H264Encoder()
+            var pb: CVPixelBuffer?
+            let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+            CVPixelBufferCreate(nil, 320, 240, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, attrs, &pb)
+            guard let pb else { return }
+            encoder.encode(pb, pts: .zero)
+            if let session = encoder.session { VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid) }
+            encoder.invalidate()
+        }
+    }
+
     func requestKeyframe() {
         lock.lock(); forceKeyframe = true; lock.unlock()
     }

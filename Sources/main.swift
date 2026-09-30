@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Avvio
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        H264Encoder.warmUp()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
@@ -222,6 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 slot.sourceName = name
                 slot.error = nil
                 slot.capturedSize = CGDisplayBounds(id).size
+            } catch ScreenCapturer.CaptureError.superseded {
+                return   // un riavvio più recente è già in corso
             } catch {
                 slot.sourceName = nil
                 slot.error = CGPreflightScreenCaptureAccess()

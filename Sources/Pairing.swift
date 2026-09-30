@@ -39,10 +39,12 @@ final class PairingManager {
     private var requests: [String: Request] = [:]
     private var lastRequestByHost: [String: Date] = [:]
     private var devicesByHash: [String: PairedDevice] = [:]
+    private let defaults: UserDefaults
     private let defaultsKey = "pairedDevices"
 
-    init() {
-        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if let data = defaults.data(forKey: defaultsKey),
            let list = try? JSONDecoder().decode([PairedDevice].self, from: data) {
             for d in list { devicesByHash[d.tokenHash] = d }
         }
@@ -55,6 +57,7 @@ final class PairingManager {
         lock.lock()
         let now = Date()
         requests = requests.filter { $0.value.expires > now }
+        lastRequestByHost = lastRequestByHost.filter { now.timeIntervalSince($0.value) < 3 }
         if let last = lastRequestByHost[host], now.timeIntervalSince(last) < 3 { lock.unlock(); return nil }
         lastRequestByHost[host] = now
         // Una richiesta per host alla volta, al massimo 3 in totale.
@@ -163,7 +166,7 @@ final class PairingManager {
 
     private func saveLocked() {
         if let data = try? JSONEncoder().encode(Array(devicesByHash.values)) {
-            UserDefaults.standard.set(data, forKey: defaultsKey)
+            defaults.set(data, forKey: defaultsKey)
         }
     }
 

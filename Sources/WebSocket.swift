@@ -6,12 +6,16 @@ import Network
 final class WebSocket {
     var onText: ((String) -> Void)?
     var onClose: (() -> Void)?
+    /// Chiamato quando tutti i dati accodati sono stati consegnati al sistema.
+    var onDrain: (() -> Void)?
 
     /// Byte accodati e non ancora consegnati al sistema: misura quanto il client è indietro.
     private(set) var pendingBytes = 0
 
     private let conn: NWConnection
+    /// Byte ricevuti; quelli prima di `readIndex` sono già stati letti.
     private var buffer: [UInt8]
+    private var readIndex = 0
     private var message: [UInt8] = []
     private var messageOpcode: UInt8 = 0
     private var closed = false
@@ -50,8 +54,9 @@ final class WebSocket {
 
     private func send(opcode: UInt8, payload: Data) {
         guard !closed else { return }
-        var frame = Data([0x80 | opcode])
         let n = payload.count
+        var frame = Data(capacity: n + 10)
+        frame.append(0x80 | opcode)
         if n < 126 {
             frame.append(UInt8(n))
         } else if n <= 0xFFFF {
@@ -69,7 +74,7 @@ final class WebSocket {
         conn.send(content: frame, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             self.pendingBytes -= size
-            if error != nil { self.close() }
+            if error != nil { self.close() } else if self.pendingBytes == 0 { self.onDrain?() }
         })
     }
 
@@ -85,35 +90,44 @@ final class WebSocket {
     }
 
     private func parse() {
-        while !closed, buffer.count >= 2 {
-            let b0 = buffer[0], b1 = buffer[1]
+        while !closed {
+            let available = buffer.count - readIndex
+            guard available >= 2 else { break }
+            let b0 = buffer[readIndex], b1 = buffer[readIndex + 1]
             let fin = b0 & 0x80 != 0
             let opcode = b0 & 0x0F
             let masked = b1 & 0x80 != 0
             var length = Int(b1 & 0x7F)
-            var offset = 2
+            var header = 2
             if length == 126 {
-                guard buffer.count >= 4 else { return }
-                length = Int(buffer[2]) << 8 | Int(buffer[3])
-                offset = 4
+                guard available >= 4 else { break }
+                length = Int(buffer[readIndex + 2]) << 8 | Int(buffer[readIndex + 3])
+                header = 4
             } else if length == 127 {
-                guard buffer.count >= 10 else { return }
-                guard buffer[2..<6].allSatisfy({ $0 == 0 }) else { close(); return }
-                length = buffer[6..<10].reduce(0) { $0 << 8 | Int($1) }
-                offset = 10
+                guard available >= 10 else { break }
+                guard buffer[(readIndex + 2)..<(readIndex + 6)].allSatisfy({ $0 == 0 }) else { close(); return }
+                length = buffer[(readIndex + 6)..<(readIndex + 10)].reduce(0) { $0 << 8 | Int($1) }
+                header = 10
             }
             guard length <= Self.maxMessage else { close(); return }
-            let maskLength = masked ? 4 : 0
-            guard buffer.count >= offset + maskLength + length else { return }
+            let maskStart = readIndex + header
+            let start = maskStart + (masked ? 4 : 0)
+            guard buffer.count >= start + length else { break }
 
-            let start = offset + maskLength
             var payload = Array(buffer[start..<(start + length)])
             if masked {
-                let mask = Array(buffer[offset..<(offset + 4)])
-                for i in payload.indices { payload[i] ^= mask[i & 3] }
+                for i in payload.indices { payload[i] ^= buffer[maskStart + (i & 3)] }
             }
-            buffer.removeFirst(start + length)
+            readIndex = start + length
             handle(opcode: opcode, fin: fin, payload: payload)
+        }
+        // Scarta i byte già letti una volta sola, invece che a ogni frame.
+        if readIndex == buffer.count {
+            buffer.removeAll(keepingCapacity: true)
+            readIndex = 0
+        } else if readIndex > 0 {
+            buffer.removeFirst(readIndex)
+            readIndex = 0
         }
     }
 
@@ -126,7 +140,12 @@ final class WebSocket {
         case 0x1, 0x2:
             if fin { deliver(opcode, payload) } else { messageOpcode = opcode; message = payload }
         case 0x8:
-            close()
+            // Risponde alla chiusura prima di chiudere, così il browser vede una chiusura pulita.
+            send(opcode: 0x8, payload: Data(payload.prefix(2)))
+            let conn = self.conn
+            conn.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in conn.cancel() })
+            closed = true
+            onClose?()
         case 0x9:
             send(opcode: 0xA, payload: Data(payload))
         default:

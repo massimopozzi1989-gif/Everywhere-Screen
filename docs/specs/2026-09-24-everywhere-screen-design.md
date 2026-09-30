@@ -23,8 +23,11 @@ tramite browser, senza installare nulla sul tablet. Il tablet può anche control
   frame): a schermo fermo il player si ferma sull'ultimo frame e riparte senza accumulare ritardo.
 - `WebSocket` / `HTTPServer` — un'unica porta (5050): pagine, API di abbinamento, `/ws/N`
   (video + input), `/stream/N` (MJPEG di ripiego).
-- Backpressure: se un client accumula troppi dati non inviati, si scartano frame fino al
-  prossimo keyframe (richiesto all'encoder).
+- Backpressure: se un client accumula troppi dati non inviati, si scartano i suoi frame; il
+  keyframe per ripartire si chiede solo quando ha smaltito l'arretrato (chiederlo a ogni frame
+  renderebbe keyframe lo stream di tutti gli altri). Un client fermo da 10 s viene chiuso.
+- Connessioni: header entro 10 s (niente connessioni appese), TCP keepalive per scoprire i
+  tablet spariti anche a schermo fermo. La prima sessione VideoToolbox (~0,6 s) si crea all'avvio.
 - `InputInjector` — CGEvent: mouse (clic, doppio clic, trascinamento, destro), scroll in pixel,
   testo Unicode, tasti con modificatori (per posizione fisica, `KeyboardEvent.code`), pressione
   della Pencil. Richiede il permesso Accessibilità.

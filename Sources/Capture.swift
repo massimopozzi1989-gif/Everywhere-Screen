@@ -11,16 +11,25 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     var scale: CGFloat = 1.0
 
     private var stream: SCStream?
+    /// Cresce a ogni start/stop: un avvio superato da uno più recente mentre era in attesa
+    /// non deve lasciare uno stream orfano che continua a catturare.
+    private var generation = 0
     private let frameQueue = DispatchQueue(label: "everywhere.capture", qos: .userInteractive)
 
     enum CaptureError: LocalizedError {
         case displayNotFound
-        var errorDescription: String? { "Schermo non trovato" }
+        /// Un altro start/stop è arrivato nel frattempo.
+        case superseded
+        var errorDescription: String? { self == .displayNotFound ? "Schermo non trovato" : "Avvio annullato" }
     }
 
+    /// start e stop vanno chiamati dal main thread.
     func start(displayID: CGDirectDisplayID) async throws {
-        await stop()
+        generation += 1
+        let mine = generation
+        await stopStream()
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        guard mine == generation else { throw CaptureError.superseded }
         guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
             throw CaptureError.displayNotFound
         }
@@ -40,10 +49,19 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         let s = SCStream(filter: filter, configuration: config, delegate: self)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: frameQueue)
         try await s.startCapture()
+        guard mine == generation else {
+            try? await s.stopCapture()
+            throw CaptureError.superseded
+        }
         stream = s
     }
 
     func stop() async {
+        generation += 1
+        await stopStream()
+    }
+
+    private func stopStream() async {
         guard let s = stream else { return }
         stream = nil
         try? await s.stopCapture()
@@ -62,7 +80,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        if stream === self.stream { self.stream = nil }
-        onStop?(error)
+        DispatchQueue.main.async {
+            // Uno stream già sostituito non conta.
+            guard stream === self.stream else { return }
+            self.stream = nil
+            self.onStop?(error)
+        }
     }
 }

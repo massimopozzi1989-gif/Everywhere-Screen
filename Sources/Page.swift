@@ -266,9 +266,9 @@ enum Page {
     // ---------- Video H.264 (Media Source Extensions) ----------
 
     const player = {
-      ms: null, sb: null, q: [],
+      ms: null, sb: null, q: [], url: null, skip: false,
       reset(codec) {
-        this.q = []; this.sb = null;
+        this.q = []; this.sb = null; this.skip = false;
         const ms = new MS();
         this.ms = ms;
         if (window.ManagedMediaSource && ms instanceof window.ManagedMediaSource) video.disableRemotePlayback = true;
@@ -280,13 +280,22 @@ enum Page {
           this.sb.addEventListener('updateend', () => this.after());
           this.pump();
         }, { once: true });
-        video.src = URL.createObjectURL(ms);
+        if (this.url) URL.revokeObjectURL(this.url);
+        this.url = URL.createObjectURL(ms);
+        video.src = this.url;
       },
-      append(buf) { this.q.push(buf); this.pump(); },
+      // Fino al prossimo init si scartano i segmenti: senza keyframe non sono decodificabili.
+      restart() { this.q = []; this.skip = true; send({ t: 'kf' }); },
+      append(buf) {
+        if (this.skip) return;
+        // Il decoder non tiene il passo: invece di accumulare ritardo e memoria si riparte da un keyframe.
+        if (this.q.length > 60) { this.restart(); return; }
+        this.q.push(buf); this.pump();
+      },
       pump() {
         const sb = this.sb;
         if (!sb || sb.updating || !this.q.length || this.ms.readyState !== 'open') return;
-        try { sb.appendBuffer(this.q.shift()); } catch (e) { this.q = []; send({ t: 'kf' }); }
+        try { sb.appendBuffer(this.q.shift()); } catch (e) { this.restart(); }
       },
       after() {
         const sb = this.sb, b = sb.buffered;
@@ -302,7 +311,7 @@ enum Page {
         this.pump();
       }
     };
-    video.addEventListener('error', () => send({ t: 'kf' }));
+    video.addEventListener('error', () => player.restart());
     img.onload = () => status('');
     img.onerror = () => { if (!useMSE) { status('Riconnessione…'); retry = setTimeout(boot, 1000); } };
 

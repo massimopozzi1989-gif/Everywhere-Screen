@@ -114,6 +114,12 @@ final class StreamHub {
         let viewer = Viewer(ws: ws, deviceID: deviceID, control: control)
         let id = ObjectIdentifier(ws)
         ws.onText = { [weak self] text in self?.handle(text, from: id) }
+        // Il client ha smaltito l'arretrato: se aspetta un keyframe lo si chiede ora (anche a
+        // schermo fermo, quando non arriverebbero frame nuovi).
+        ws.onDrain = { [weak self] in
+            guard let self, let viewer = self.viewers[id], viewer.wantsVideo, viewer.waitingForKey else { return }
+            self.scheduleKeyframe()
+        }
         ws.onClose = { [weak self] in
             self?.viewers[id] = nil
             self?.updateCounts()
@@ -146,12 +152,20 @@ final class StreamHub {
         }
     }
 
+    /// Un client che non smaltisce nulla per così tanto è sparito (es. tablet in standby):
+    /// chiuderlo lo fa riconnettere e libera la memoria.
+    private static let stallTimeout: TimeInterval = 10
+
     private func deliver(_ frame: EncodedFrame) {
         lock.lock(); let fps = _fps; lock.unlock()
+        let now = ProcessInfo.processInfo.systemUptime
         var needKey = false
+        var dead: [Viewer] = []
         for viewer in viewers.values where viewer.wantsVideo {
-            if !viewer.send(frame, fps: fps) { needKey = true }
+            if viewer.send(frame, fps: fps, now: now) { needKey = true }
+            if let since = viewer.stalledSince, now - since > Self.stallTimeout { dead.append(viewer) }
         }
+        dead.forEach { $0.ws.close() }
         if needKey { scheduleKeyframe() }
     }
 
@@ -185,9 +199,18 @@ final class StreamHub {
             }
         }
         conn.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        watchForClose(conn, client)
         mjpegClients[id] = client
         updateCounts()
         if let lastJPEG { client.send(frame: lastJPEG) } else { refresh() }
+    }
+
+    /// Il client MJPEG non invia nulla: si legge solo per accorgersi subito che ha chiuso,
+    /// anche a schermo fermo quando non si sta inviando niente.
+    private func watchForClose(_ conn: NWConnection, _ client: MJPEGClient) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] _, _, isComplete, error in
+            if isComplete || error != nil { client.close() } else { self?.watchForClose(conn, client) }
+        }
     }
 
     private func broadcastJPEG(_ jpeg: Data) {
@@ -241,7 +264,9 @@ private final class Viewer {
     var control: Bool
     var wantsVideo = false
     var needsInit = true
-    private var waitingForKey = true
+    private(set) var waitingForKey = true
+    /// Da quando il client è troppo indietro per ricevere frame.
+    private(set) var stalledSince: TimeInterval?
     private var sps = Data()
     private var muxer = FMP4Muxer(fps: 30)
 
@@ -258,10 +283,19 @@ private final class Viewer {
         ws.send(json: ["t": "info", "control": control && Edition.inputAllowed])
     }
 
-    /// Ritorna false se serve un keyframe per questo client.
-    func send(_ frame: EncodedFrame, fps: Int) -> Bool {
+    /// Ritorna true se serve un keyframe per questo client.
+    func send(_ frame: EncodedFrame, fps: Int, now: TimeInterval) -> Bool {
+        // Rete lenta: invece di accumulare ritardo si saltano i frame. Il keyframe per ripartire
+        // si chiede solo quando il client ha smaltito l'arretrato (onDrain): chiederlo a ogni
+        // frame trasformerebbe in keyframe anche lo stream di tutti gli altri client.
+        if ws.pendingBytes > Self.maxBacklog {
+            if stalledSince == nil { stalledSince = now }
+            waitingForKey = true
+            return false
+        }
+        stalledSince = nil
         if needsInit || frame.sps != sps {
-            guard frame.isKey else { waitingForKey = true; return false }
+            guard frame.isKey else { waitingForKey = true; return true }
             ws.send(json: ["t": "init", "codec": frame.codec, "w": frame.width, "h": frame.height])
             ws.send(binary: FMP4Muxer.initSegment(for: frame))
             muxer = FMP4Muxer(fps: fps)
@@ -270,16 +304,11 @@ private final class Viewer {
             waitingForKey = false
         }
         if waitingForKey {
-            guard frame.isKey else { return false }
+            guard frame.isKey else { return true }
             waitingForKey = false
         }
-        // Rete lenta: invece di accumulare ritardo si salta fino al prossimo keyframe.
-        if ws.pendingBytes > Self.maxBacklog {
-            waitingForKey = true
-            return false
-        }
         ws.send(binary: muxer.mediaSegment(for: frame))
-        return true
+        return false
     }
 }
 

@@ -36,6 +36,8 @@ tablet serve anche **Accessibilità**.
 ```bash
 ./build.sh            # build/Everywhere Screen.app, firmata Developer ID
 ./build.sh install    # la installa in /Applications e la avvia
+scripts/test.sh       # test della geometria delle disposizioni
+scripts/stress.sh     # stress test di server, streaming e abbinamento (frame sintetici, ~90 s)
 scripts/release.sh    # DMG firmato e notarizzato in dist/
 ```
 Il progetto non usa Xcode: `swiftc` compila `Sources/*.swift`. Gli schermi virtuali usano l'API

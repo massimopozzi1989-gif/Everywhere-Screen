@@ -11,7 +11,7 @@ import Foundation
 ///   /stream/N      MJPEG di ripiego
 final class WebApp {
     let server = HTTPServer()
-    let pairing = PairingManager()
+    let pairing: PairingManager
     var touchIcon: Data?
 
     private static let cookie = "es_token"
@@ -19,6 +19,10 @@ final class WebApp {
     private var hubs: [Int: StreamHub] = [:]
 
     var queue: DispatchQueue { server.queue }
+
+    init(pairing: PairingManager = PairingManager()) {
+        self.pairing = pairing
+    }
 
     func start(port: UInt16) throws {
         server.onRequest = { [weak self] request, conn in self?.route(request, conn) }
