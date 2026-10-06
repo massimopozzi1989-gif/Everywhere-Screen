@@ -245,9 +245,10 @@ func parseResponse(_ all: [UInt8]) -> Response? {
     return Response(status: status, headers: headers, body: Array(all[(end + 4)...]))
 }
 
-func httpGet(_ path: String, cookie: String? = nil) -> Response? {
+func httpGet(_ path: String, cookie: String? = nil, language: String? = nil) -> Response? {
     guard let s = Sock() else { return nil }
     var req = "GET \(path) HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+    if let language { req += "Accept-Language: \(language)\r\n" }
     if let cookie { req += "Cookie: theme=dark; es_token=\(cookie)\r\n" }
     req += "\r\n"
     guard s.write(req) else { return nil }
@@ -386,6 +387,7 @@ final class TestViewer {
     private(set) var pongs: [String] = []
     private(set) var infos: [Bool] = []
     private(set) var identifies = 0
+    private(set) var reloads = 0
     private(set) var ended = false
     private var expectInit = false
     private var lastSeq: UInt32 = 0
@@ -448,6 +450,7 @@ final class TestViewer {
                 expectInit = true
             case "info": infos.append(m["control"] as? Bool ?? false)
             case "identify": identifies += 1
+            case "reload": reloads += 1
             default: break
             }
         case 2:
@@ -1072,6 +1075,39 @@ func scenarioEightScreens(token: String) {
     for (i, hub) in extra.enumerated() { web.unregister(channel: 11 + i); hub.closeAll() }
 }
 
+func scenarioLanguage(token: String) {
+    section("Lingua: pagina e messaggi secondo il browser o la scelta sul Mac")
+    let saved = Language.preference
+    defer { Language.preference = saved }
+    Language.preference = nil
+    func page(_ lang: String?) -> String { String(decoding: httpGet("/1", language: lang)?.body ?? [], as: UTF8.self) }
+    let en = page("en-US,en;q=0.9"), it = page("it-IT,it;q=0.9,en;q=0.8"), de = page("de-DE,de;q=0.9")
+    report.check(en.contains("<html lang=\"en\"") && en.contains(">Connect<") && en.contains("\"labelOn\":\"Control on\""), "pagina inglese per Accept-Language en")
+    report.check(it.contains("<html lang=\"it\"") && it.contains(">Collega<") && it.contains("\"labelOn\":\"Controllo attivo\""), "pagina italiana per Accept-Language it")
+    report.check(de.contains("<html lang=\"en\""), "lingua non supportata: attesa l'inglese")
+    let italianUI = [">Collega<", "Inserisci il codice", "Tocca per", "Connessione…", "Solo schermo", "\"Tastiera\""]
+    report.check(italianUI.allSatisfy { !en.contains($0) }, "testi italiani visibili nella pagina inglese: \(italianUI.filter { en.contains($0) })")
+    let err = String(decoding: httpGet("/api/me", language: "en")?.body ?? [], as: UTF8.self)
+    report.check(err.contains("Device not paired"), "errore API in inglese: \(err)")
+    let index = String(decoding: httpGet("/", language: "en")?.body ?? [], as: UTF8.self)
+    report.check(index.contains(">Screen 1<") && index.contains("Which screen"), "pagina di scelta dello schermo in inglese")
+
+    // Scelta esplicita sul Mac: vale per tutti i tablet, qualunque sia la lingua del browser.
+    Language.preference = .it
+    report.check(page("en-US").contains(">Collega<"), "con l'italiano scelto sul Mac la pagina deve essere italiana")
+    report.check(tr("Aggiungi schermo", "Add screen") == "Aggiungi schermo", "menu del Mac in italiano")
+    Language.preference = .en
+    report.check(page("it-IT").contains(">Connect<"), "con l'inglese scelto sul Mac la pagina deve essere inglese")
+
+    // Cambio di lingua: i tablet collegati ricaricano la pagina.
+    guard let v = TestViewer.connect("lingua", channel: 2, cookie: token) else { return }
+    _ = waitUntil(2) { !v.infos.isEmpty }
+    hubs[2]!.reloadClients()
+    report.check(waitUntil(2) { v.reloads > 0 }, "il tablet non riceve la richiesta di ricaricare la pagina")
+    v.ws.sock.close()
+    info("pagina, errori e menu nella lingua giusta; i tablet ricaricano al cambio")
+}
+
 func scenarioPairingConcurrency() {
     section("Abbinamento concorrente: 16 thread × 400 operazioni")
     let suite2 = suite + ".concurrency"
@@ -1144,7 +1180,7 @@ func scenarioMicro() {
 
     t0 = uptime()
     var chars = 0
-    for i in 0..<5_000 { chars += Page.viewer(channel: i % 3 + 1).utf8.count }
+    for i in 0..<5_000 { chars += Page.viewer(channel: i % 3 + 1, lang: .it).utf8.count }
     report.metric("pagina del tablet generata", String(format: "%.1f µs (%d KB)", (uptime() - t0) / 5_000 * 1e6, chars / 5_000 / 1024))
 }
 
@@ -1284,6 +1320,7 @@ Thread {
     run("streaming") { scenarioStreaming(token: token) }
     run("revoke") { scenarioRevoke() }
     run("screens8") { scenarioEightScreens(token: token) }
+    run("lang") { scenarioLanguage(token: token) }
     run("pairing") { scenarioPairingConcurrency() }
     run("micro") { scenarioMicro() }
     run("slowloris") { scenarioSlowloris() }

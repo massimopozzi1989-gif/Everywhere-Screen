@@ -54,7 +54,7 @@
 <body>
   <div class="title">
     <h1>Everywhere <span>Screen</span></h1>
-    <p>Qualsiasi tablet o telefono diventa uno schermo del tuo Mac. Via Wi‑Fi, solo col browser.</p>
+    <p data-en="Turn any tablet or phone into a display for your Mac. Over Wi‑Fi, just a browser.">Qualsiasi tablet o telefono diventa uno schermo del tuo Mac. Via Wi‑Fi, solo col browser.</p>
   </div>
 
   <div class="stage">
@@ -81,22 +81,30 @@
       <div class="win" style="left:170px;top:70px;width:170px;height:130px"><div class="lines"><i style="width:65%"></i><i></i><i style="width:80%"></i></div></div>
     </div></div>
     <div class="base"></div>
-    <div class="label" style="left:452px;top:340px;width:376px">Il tuo Mac</div>
+    <div class="label" style="left:452px;top:340px;width:376px" data-en="Your Mac">Il tuo Mac</div>
 
     <div class="screen android"><div class="desk" style="background:linear-gradient(160deg,#5b3fd6,#1aa3d6)"><div class="bar"></div>
       <div class="win" style="left:14px;top:24px;width:148px;height:120px"><div class="lines"><i></i><i style="width:70%"></i><i style="width:90%"></i><i style="width:60%"></i></div></div>
       <div class="win" style="left:30px;top:150px;width:132px;height:90px"><div class="lines"><i style="width:80%"></i><i></i></div></div>
       </div><div class="tag">2</div>
     </div>
-    <div class="label" style="left:900px;top:355px;width:196px">Tablet Android</div>
+    <div class="label" style="left:900px;top:355px;width:196px" data-en="Android tablet">Tablet Android</div>
 
     <div class="screen phone"><div class="desk" style="background:linear-gradient(160deg,#2c63e6,#16c2c9)"><div class="bar"></div>
       <div class="win" style="left:8px;top:22px;width:68px;height:80px"><div class="lines" style="left:6px;right:6px"><i></i><i style="width:70%"></i><i></i></div></div>
       </div><div class="tag" style="width:34px;height:34px;font-size:18px;border-radius:10px;right:-14px">3</div>
     </div>
-    <div class="label" style="left:1115px;top:370px;width:136px">Telefono</div>
+    <div class="label" style="left:1115px;top:370px;width:136px" data-en="Phone">Telefono</div>
 
   </div>
-  <div class="chip" style="left:50%;transform:translateX(-50%)">Fino a 8 schermi · Tocco, Apple Pencil e tastiera · Niente app sul tablet</div>
+  <div class="chip" style="left:50%;transform:translateX(-50%)" data-en="Up to 8 screens · Touch, Apple Pencil and keyboard · No app on the tablet">Fino a 8 schermi · Tocco, Apple Pencil e tastiera · Niente app sul tablet</div>
+
+<script>
+  // ?lang=en: testi inglesi presi da data-en.
+  if (new URLSearchParams(location.search).get('lang') === 'en') {
+    document.documentElement.lang = 'en';
+    document.querySelectorAll('[data-en]').forEach(el => { el.innerHTML = el.dataset.en; });
+  }
+</script>
 </body>
 </html>

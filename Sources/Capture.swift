@@ -20,7 +20,9 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         case displayNotFound
         /// Un altro start/stop è arrivato nel frattempo.
         case superseded
-        var errorDescription: String? { self == .displayNotFound ? "Schermo non trovato" : "Avvio annullato" }
+        var errorDescription: String? {
+            self == .displayNotFound ? tr("Schermo non trovato", "Display not found") : tr("Avvio annullato", "Start cancelled")
+        }
     }
 
     /// start e stop vanno chiamati dal main thread.

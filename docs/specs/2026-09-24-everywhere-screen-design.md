@@ -13,6 +13,10 @@ tramite browser, senza installare nulla sul tablet. Il tablet può anche control
   HttpOnly). Senza token niente video né controllo. Dispositivi revocabili dal menu.
   HTTP in chiaro sulla LAN; HTTPS (profilo certificato da installare sul tablet) in una fase futura.
 
+- Lingue: italiano e inglese (`L10n.swift`, `tr(it, en)` accanto a ogni testo). Scelta nel menu
+  "Lingua · Language": automatica (Mac = lingue di macOS, tablet = Accept-Language del browser,
+  altrimenti inglese) oppure fissa per Mac e tablet. Al cambio i tablet ricaricano la pagina.
+
 ## Architettura
 - `VirtualScreen` — schermo virtuale HiDPI (CGVirtualDisplay), seriale fisso per slot.
 - `ScreenCapturer` — ScreenCaptureKit, pixel buffer 4:2:0, cursore incluso.

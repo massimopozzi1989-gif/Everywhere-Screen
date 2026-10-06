@@ -17,6 +17,8 @@ struct DisplayBox: Identifiable, Equatable {
 final class ArrangementModel: ObservableObject {
     @Published var displays: [DisplayBox] = []
     @Published var preset: ArrangementPreset?
+    /// Cambia quando cambia la lingua: ridisegna i testi.
+    @Published var language = Language.current
 
     var provider: () -> [DisplayBox] = { [] }
     var onPreset: (ArrangementPreset) -> Void = { _ in }
@@ -44,7 +46,7 @@ final class ArrangementWindowController {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
                              backing: .buffered, defer: false)
-            w.title = "Disposizione schermi"
+            w.title = tr("Disposizione schermi", "Arrange screens")
             w.contentViewController = NSHostingController(rootView: ArrangementView(model: model))
             w.isReleasedWhenClosed = false
             w.center()
@@ -56,6 +58,12 @@ final class ArrangementWindowController {
     }
 
     var isVisible: Bool { window?.isVisible ?? false }
+
+    func languageChanged() {
+        model.language = Language.current
+        window?.title = tr("Disposizione schermi", "Arrange screens")
+        model.reload()
+    }
 }
 
 // MARK: - Viste
@@ -66,12 +74,12 @@ struct ArrangementView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Disposizioni pronte").font(.headline)
+                Text(tr("Disposizioni pronte", "Ready-made layouts")).font(.headline)
                 Spacer()
                 Button { model.onIdentify() } label: {
-                    Label("Identifica tablet", systemImage: "number.square")
+                    Label(tr("Identifica tablet", "Identify tablets"), systemImage: "number.square")
                 }
-                .help("Mostra il numero dello schermo su ogni tablet collegato")
+                .help(tr("Mostra il numero dello schermo su ogni tablet collegato", "Shows the screen number on every connected tablet"))
             }
             HStack(spacing: 8) {
                 ForEach(ArrangementPreset.allCases) { preset in
@@ -83,13 +91,14 @@ struct ArrangementView: View {
             ArrangementCanvas(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             HStack {
-                Text("Trascina un tablet per spostarlo: si aggancia al bordo più vicino.")
+                Text(tr("Trascina un tablet per spostarlo: si aggancia al bordo più vicino.", "Drag a tablet to move it: it snaps to the nearest edge."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Impostazioni Schermi…") { model.onOpenSettings() }
+                Button(tr("Impostazioni Schermi…", "Displays Settings…")) { model.onOpenSettings() }
             }
         }
+        .id(model.language)
         .padding(20)
         .frame(minWidth: 640, minHeight: 440)
     }
@@ -191,7 +200,7 @@ private struct DisplayTile: View {
                 if display.slot != nil {
                     HStack(spacing: 4) {
                         Circle().fill(display.connected ? Color.green : Color.white.opacity(0.4)).frame(width: 6, height: 6)
-                        Text(display.connected ? "collegato" : "in attesa").font(.caption2)
+                        Text(display.connected ? tr("collegato", "connected") : tr("in attesa", "waiting")).font(.caption2)
                     }
                     .opacity(0.9)
                 }

@@ -15,7 +15,8 @@ final class PairingPanel: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
 
-        let message = NSTextField(wrappingLabelWithString: "«\(request.name)» vuole collegarsi a questo Mac.\nInserisci questo codice sul dispositivo:")
+        let message = NSTextField(wrappingLabelWithString: tr("«\(request.name)» vuole collegarsi a questo Mac.\nInserisci questo codice sul dispositivo:",
+                                                              "“\(request.name)” wants to connect to this Mac.\nEnter this code on the device:"))
         message.alignment = .center
 
         let spaced = String(request.code.prefix(3)) + " " + String(request.code.suffix(3))
@@ -24,7 +25,7 @@ final class PairingPanel: NSPanel {
         code.alignment = .center
         code.isSelectable = true
 
-        let reject = NSButton(title: "Rifiuta", target: nil, action: nil)
+        let reject = NSButton(title: tr("Rifiuta", "Decline"), target: nil, action: nil)
         reject.bezelStyle = .rounded
         reject.target = self
         reject.action = #selector(rejectTapped)

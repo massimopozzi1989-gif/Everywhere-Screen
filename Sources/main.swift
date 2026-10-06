@@ -46,15 +46,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var autoFullscreen: Bool { defaults.object(forKey: "autoFullscreen") as? Bool ?? true }
 
     /// Dimensioni in punti (HiDPI). Il verticale si ottiene con "Ruota" o con l'adattamento automatico.
-    private let presets: [(String, Int, Int)] = [
-        ("iPad 10,2\" (7ª–9ª gen.)", 1080, 810),
+    private var presets: [(String, Int, Int)] { [
+        (tr("iPad 10,2\" (7ª–9ª gen.)", "iPad 10.2\" (7th–9th gen)"), 1080, 810),
         ("iPad 10,9\" / iPad Air 11\"", 1180, 820),
         ("iPad Pro 11\"", 1194, 834),
         ("iPad Pro / Air 13\"", 1366, 1024),
         ("iPad mini", 1133, 744),
         ("Tablet 16:10", 1280, 800),
         ("16:9", 1600, 900),
-    ]
+    ] }
 
     // MARK: - Avvio
 
@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         do {
             try web.start(port: port)
         } catch {
-            serverError = "Porta \(port) non disponibile: \(error.localizedDescription)"
+            serverError = tr("Porta \(port) non disponibile: ", "Port \(port) unavailable: ") + error.localizedDescription
         }
 
         // Schermi aggiunti/rimossi, ridimensionati o spostati.
@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         slot.capturer.onStop = { [weak self, weak slot] error in
             DispatchQueue.main.async {
                 guard let self, let slot, self.slots[index] === slot else { return }
-                slot.error = "Cattura interrotta: \(error.localizedDescription)"
+                slot.error = tr("Cattura interrotta: ", "Capture stopped: ") + error.localizedDescription
                 self.updateIcon()
                 self.scheduleRestart(slot, after: 2)
             }
@@ -211,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func restartCapture(_ slot: Slot) {
         guard slots[slot.index] === slot else { return }
         guard let (id, name) = source(for: slot) else {
-            slot.error = "Nessuno schermo disponibile"
+            slot.error = tr("Nessuno schermo disponibile", "No display available")
             updateIcon()
             return
         }
@@ -230,8 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } catch {
                 slot.sourceName = nil
                 slot.error = CGPreflightScreenCaptureAccess()
-                    ? "Errore cattura: \(error.localizedDescription)"
-                    : "Manca il permesso Registrazione Schermo"
+                    ? tr("Errore cattura: ", "Capture error: ") + error.localizedDescription
+                    : tr("Manca il permesso Registrazione Schermo", "Screen Recording permission is missing")
                 scheduleRestart(slot, after: 3)
             }
             updateIcon()
@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Lo schermo virtuale dello slot. Se l'API privata non è disponibile (es. dopo un
     /// aggiornamento di macOS), lo slot 1 ripiega su uno schermo secondario esistente.
     private func source(for slot: Slot) -> (CGDirectDisplayID, String)? {
-        if let v = slot.virtual { return (v.displayID, "Everywhere Screen \(slot.index) (virtuale)") }
+        if let v = slot.virtual { return (v.displayID, "Everywhere Screen \(slot.index) (\(tr("virtuale", "virtual")))") }
         guard slot.index == 1 else { return nil }
         let mainID = CGMainDisplayID()
         guard let screen = NSScreen.screens.first(where: { $0.displayID != mainID }) ?? NSScreen.main,
@@ -281,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return ids.prefix(Int(count)).map { id in
             let slot = slots.values.first { $0.virtual?.displayID == id }
             let screenName = NSScreen.screens.first { $0.displayID == id }?.localizedName
-            let name = slot.map { "Schermo \($0.index)" } ?? (id == mainID ? "Mac" : screenName ?? "Monitor")
+            let name = slot.map { tr("Schermo \($0.index)", "Screen \($0.index)") } ?? (id == mainID ? "Mac" : screenName ?? "Monitor")
             return DisplayBox(id: id, name: name, frame: CGDisplayBounds(id), isMain: id == mainID,
                               slot: slot?.index, connected: (slot?.viewers ?? 0) > 0)
         }
@@ -331,21 +331,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let base = "http://\(NetInfo.localIPv4() ?? "IP-del-Mac"):\(port)"
+        let base = "http://\(NetInfo.localIPv4() ?? tr("IP-del-Mac", "Mac-IP")):\(port)"
 
-        menu.addItem(action("\(base)  (clic per copiare)", #selector(copyURL(_:)), base))
+        menu.addItem(action("\(base)  " + tr("(clic per copiare)", "(click to copy)"), #selector(copyURL(_:)), base))
         if let serverError { menu.addItem(disabled(serverError)) }
         menu.addItem(.separator())
 
         for slot in slots.values.sorted(by: { $0.index < $1.index }) {
-            let clients = slot.viewers == 1 ? "1 dispositivo" : "\(slot.viewers) dispositivi"
-            let parent = NSMenuItem(title: "Schermo \(slot.index) — \(slot.width)×\(slot.height) · \(clients)", action: nil, keyEquivalent: "")
+            let clients = slot.viewers == 1 ? tr("1 dispositivo", "1 device") : tr("\(slot.viewers) dispositivi", "\(slot.viewers) devices")
+            let parent = NSMenuItem(title: tr("Schermo", "Screen") + " \(slot.index) — \(slot.width)×\(slot.height) · \(clients)", action: nil, keyEquivalent: "")
             let sub = NSMenu()
-            sub.addItem(action("Copia indirizzo  \(base)/\(slot.index)", #selector(copyURL(_:)), "\(base)/\(slot.index)"))
-            sub.addItem(disabled(slot.error ?? "Sorgente: \(slot.sourceName ?? "—")"))
+            sub.addItem(action(tr("Copia indirizzo", "Copy address") + "  \(base)/\(slot.index)", #selector(copyURL(_:)), "\(base)/\(slot.index)"))
+            sub.addItem(disabled(slot.error ?? tr("Sorgente: ", "Source: ") + (slot.sourceName ?? "—")))
             if slot.virtual != nil {
                 sub.addItem(.separator())
-                let auto = action("Adatta automaticamente al dispositivo", #selector(toggleAutoFit(_:)), slot.index)
+                let auto = action(tr("Adatta automaticamente al dispositivo", "Fit to the device automatically"), #selector(toggleAutoFit(_:)), slot.index)
                 auto.state = slot.autoFit ? .on : .off
                 sub.addItem(auto)
                 for (name, w, h) in presets {
@@ -355,64 +355,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     mi.state = (pw, ph) == (slot.width, slot.height) ? .on : .off
                     sub.addItem(mi)
                 }
-                sub.addItem(action("Ruota (orizzontale/verticale)", #selector(rotate(_:)), slot.index))
+                sub.addItem(action(tr("Ruota (orizzontale/verticale)", "Rotate (landscape/portrait)"), #selector(rotate(_:)), slot.index))
             }
             sub.addItem(.separator())
-            sub.addItem(action("Rimuovi schermo \(slot.index)", #selector(removeScreen(_:)), slot.index))
+            sub.addItem(action(tr("Rimuovi schermo", "Remove screen") + " \(slot.index)", #selector(removeScreen(_:)), slot.index))
             parent.submenu = sub
             menu.addItem(parent)
         }
-        let add = action("Aggiungi schermo", #selector(addScreen), nil)
+        let add = action(tr("Aggiungi schermo", "Add screen"), #selector(addScreen), nil)
         add.isEnabled = slots.count < Edition.maxScreens
         menu.addItem(add)
         menu.addItem(.separator())
 
         menu.addItem(devicesMenu())
         if Edition.inputAllowed && !InputInjector.hasPermission {
-            menu.addItem(action("⚠︎ Consenti il controllo dal tablet (Accessibilità)…", #selector(openAccessibility), nil))
+            menu.addItem(action(tr("⚠︎ Consenti il controllo dal tablet (Accessibilità)…", "⚠︎ Allow control from the tablet (Accessibility)…"), #selector(openAccessibility), nil))
         }
         menu.addItem(.separator())
 
-        menu.addItem(optionMenu("Qualità", key: "quality", current: quality,
-                                options: [("Bassa (meno banda)", 0.5), ("Media", 0.7), ("Alta", 0.85), ("Massima", 0.95)]))
-        menu.addItem(optionMenu("Risoluzione stream", key: "scale", current: scale,
+        menu.addItem(optionMenu(tr("Qualità", "Quality"), key: "quality", current: quality,
+                                options: [(tr("Bassa (meno banda)", "Low (less bandwidth)"), 0.5), (tr("Media", "Medium"), 0.7),
+                                          (tr("Alta", "High"), 0.85), (tr("Massima", "Maximum"), 0.95)]))
+        menu.addItem(optionMenu(tr("Risoluzione stream", "Stream resolution"), key: "scale", current: scale,
                                 options: [("Retina (100%)", 1.0), ("75%", 0.75), ("50%", 0.5)]))
-        menu.addItem(optionMenu("Frame al secondo", key: "fps", current: Double(fps),
+        menu.addItem(optionMenu(tr("Frame al secondo", "Frames per second"), key: "fps", current: Double(fps),
                                 options: [("15", 15), ("30", 30), ("60", 60)]))
         menu.addItem(.separator())
 
-        let fullscreen = action("Schermo intero automatico sui tablet", #selector(toggleAutoFullscreen), nil)
+        let fullscreen = action(tr("Schermo intero automatico sui tablet", "Automatic full screen on tablets"), #selector(toggleAutoFullscreen), nil)
         fullscreen.state = autoFullscreen ? .on : .off
-        fullscreen.toolTip = "Al primo tocco il tablet nasconde le barre del browser. Si può sempre attivare o disattivare dal pulsante sul tablet."
+        fullscreen.toolTip = tr("Al primo tocco il tablet nasconde le barre del browser. Si può sempre attivare o disattivare dal pulsante sul tablet.",
+                                "On the first touch the tablet hides the browser bars. You can always switch it on or off with the button on the tablet.")
         menu.addItem(fullscreen)
+        menu.addItem(languageMenu())
         menu.addItem(.separator())
 
-        let login = action("Avvia al login", #selector(toggleLogin), nil)
+        let login = action(tr("Avvia al login", "Open at login"), #selector(toggleLogin), nil)
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
-        menu.addItem(action("Disposizione schermi…", #selector(showArrangement), nil))
-        menu.addItem(action("Impostazioni Registrazione Schermo…", #selector(openPrivacy), nil))
+        menu.addItem(action(tr("Disposizione schermi…", "Arrange screens…"), #selector(showArrangement), nil))
+        menu.addItem(action(tr("Impostazioni Registrazione Schermo…", "Screen Recording settings…"), #selector(openPrivacy), nil))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Esci da Everywhere Screen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: tr("Esci da Everywhere Screen", "Quit Everywhere Screen"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    /// Il titolo è in entrambe le lingue: chi ha scelto quella sbagliata lo ritrova comunque.
+    private func languageMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: "Lingua · Language", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        let options: [(String, String)] = [(tr("Automatica (come il sistema)", "Automatic (same as the system)"), ""),
+                                           ("Italiano", Language.it.rawValue), ("English", Language.en.rawValue)]
+        for (title, code) in options {
+            let mi = action(title, #selector(setLanguage(_:)), code)
+            mi.state = (Language.preference?.rawValue ?? "") == code ? .on : .off
+            sub.addItem(mi)
+        }
+        parent.submenu = sub
+        return parent
     }
 
     private func devicesMenu() -> NSMenuItem {
         let devices = web.pairing.devices
-        let parent = NSMenuItem(title: "Dispositivi abbinati (\(devices.count))", action: nil, keyEquivalent: "")
+        let parent = NSMenuItem(title: tr("Dispositivi abbinati", "Paired devices") + " (\(devices.count))", action: nil, keyEquivalent: "")
         let sub = NSMenu()
         if devices.isEmpty {
-            sub.addItem(disabled("Nessuno: apri l'indirizzo sul tablet per abbinarlo"))
+            sub.addItem(disabled(tr("Nessuno: apri l'indirizzo sul tablet per abbinarlo", "None yet: open the address on the tablet to pair it")))
         }
         for device in devices {
             let item = NSMenuItem(title: device.name, action: nil, keyEquivalent: "")
             let dsub = NSMenu()
-            dsub.addItem(disabled("Abbinato il \(device.created.formatted(date: .abbreviated, time: .shortened))"))
+            dsub.addItem(disabled(tr("Abbinato il ", "Paired on ") + device.created.formatted(date: .abbreviated, time: .shortened)))
             if Edition.inputAllowed {
-                let control = action("Può controllare il Mac", #selector(toggleDeviceControl(_:)), device.id)
+                let control = action(tr("Può controllare il Mac", "Can control the Mac"), #selector(toggleDeviceControl(_:)), device.id)
                 control.state = device.control ? .on : .off
                 dsub.addItem(control)
             }
-            dsub.addItem(action("Rimuovi abbinamento", #selector(removeDevice(_:)), device.id))
+            dsub.addItem(action(tr("Rimuovi abbinamento", "Remove pairing"), #selector(removeDevice(_:)), device.id))
             item.submenu = dsub
             sub.addItem(item)
         }
@@ -457,7 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let index = (1...Edition.maxScreens).first(where: { slots[$0] == nil }) else { return }
         addSlot(index: index, width: 1080, height: 810, autoFit: true)
         if slots[index]?.virtual == nil {
-            slots[index]?.error = "Impossibile creare lo schermo virtuale"
+            slots[index]?.error = tr("Impossibile creare lo schermo virtuale", "Couldn't create the virtual screen")
             updateIcon()
         }
     }
@@ -516,6 +534,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         web.allHubs.forEach { $0.setAutoFullscreen(on) }
     }
 
+    @objc private func setLanguage(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String else { return }
+        Language.preference = Language(rawValue: code)
+        arrangement.languageChanged()
+        // I tablet ricaricano la pagina nella nuova lingua.
+        web.allHubs.forEach { $0.reloadClients() }
+    }
+
     @objc private func toggleLogin() {
         do {
             if SMAppService.mainApp.status == .enabled {
@@ -524,7 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try SMAppService.mainApp.register()
             }
         } catch {
-            serverError = "Avvio al login: \(error.localizedDescription)"
+            serverError = tr("Avvio al login: ", "Open at login: ") + error.localizedDescription
             updateIcon()
         }
     }

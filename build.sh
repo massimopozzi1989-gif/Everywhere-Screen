@@ -12,6 +12,7 @@ BIN="$APP/Contents/MacOS/EverywhereScreen"
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"   # testi di sistema in italiano e inglese
 
 swiftc -O -swift-version 5 -target arm64-apple-macos14.0 \
   -import-objc-header Sources/CGVirtualDisplay.h \

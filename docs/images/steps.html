@@ -48,20 +48,20 @@
 <body>
   <div class="step">
     <div class="n">1</div>
-    <h2>Avvia l'app sul Mac</h2>
-    <p>Vive nella barra dei menu e crea lo schermo virtuale. Copia l'indirizzo con un clic.</p>
+    <h2 data-en="Launch the app on your Mac">Avvia l'app sul Mac</h2>
+    <p data-en="It lives in the menu bar and creates the virtual screen. Copy the address with one click.">Vive nella barra dei menu e crea lo schermo virtuale. Copia l'indirizzo con un clic.</p>
     <div class="shot">
       <div class="desk1"></div>
       <div style="position:relative">
-        <div class="menubar"><span>🔋</span><span>Wi‑Fi</span><div class="ico"></div><span>Mar 14:30</span></div>
+        <div class="menubar"><span>🔋</span><span>Wi‑Fi</span><div class="ico"></div><span data-en="Tue 2:30 PM">Mar 14:30</span></div>
         <div class="menu">
-          <div class="sel">http://192.168.1.20:5050 (clic per copiare)</div>
+          <div class="sel" data-en="http://192.168.1.20:5050 (click to copy)">http://192.168.1.20:5050 (clic per copiare)</div>
           <hr>
-          <div>Schermo 1 — 1180×820 · 1 dispositivo</div>
-          <div>Schermo 2 — 1080×810 · 0 dispositivi</div>
-          <div>Aggiungi schermo</div>
+          <div data-en="Screen 1 — 1180×820 · 1 device">Schermo 1 — 1180×820 · 1 dispositivo</div>
+          <div data-en="Screen 2 — 1080×810 · 0 devices">Schermo 2 — 1080×810 · 0 dispositivi</div>
+          <div data-en="Add screen">Aggiungi schermo</div>
           <hr>
-          <div>Schermo intero automatico sui tablet ✓</div>
+          <div data-en="Automatic full screen on tablets ✓">Schermo intero automatico sui tablet ✓</div>
         </div>
       </div>
     </div>
@@ -69,31 +69,39 @@
 
   <div class="step">
     <div class="n">2</div>
-    <h2>Apri l'indirizzo sul tablet</h2>
-    <p>Safari, Chrome o qualsiasi browser. Niente app da installare: premi <b>Collega</b>.</p>
+    <h2 data-en="Open it on the tablet">Apri l'indirizzo sul tablet</h2>
+    <p data-en="Safari, Chrome or any browser. Nothing to install: tap &lt;b&gt;Connect&lt;/b&gt;.">Safari, Chrome o qualsiasi browser. Niente app da installare: premi <b>Collega</b>.</p>
     <div class="shot">
       <div class="glow"></div>
       <div class="tablet"><div>
         <h3>Everywhere Screen</h3>
-        <small>Collega questo dispositivo al Mac.<br>Sul Mac comparirà un codice.</small>
-        <button>Collega</button>
+        <small data-en="Connect this device to the Mac.&lt;br&gt;A code will appear on the Mac.">Collega questo dispositivo al Mac.<br>Sul Mac comparirà un codice.</small>
+        <button data-en="Connect">Collega</button>
       </div></div>
     </div>
   </div>
 
   <div class="step">
     <div class="n">3</div>
-    <h2>Inserisci il codice</h2>
-    <p>Il Mac mostra un codice a 6 cifre. Il tablet è abbinato e il nuovo schermo è pronto.</p>
+    <h2 data-en="Enter the code">Inserisci il codice</h2>
+    <p data-en="The Mac shows a 6-digit code. The tablet is paired and the new screen is ready.">Il Mac mostra un codice a 6 cifre. Il tablet è abbinato e il nuovo schermo è pronto.</p>
     <div class="shot">
       <div class="glow"></div>
       <div class="panel">
         <div class="tb">Everywhere Screen</div>
-        <div class="msg">«iPad» vuole collegarsi a questo Mac.<br>Inserisci questo codice sul dispositivo:</div>
+        <div class="msg" data-en="“iPad” wants to connect to this Mac.&lt;br&gt;Enter this code on the device:">«iPad» vuole collegarsi a questo Mac.<br>Inserisci questo codice sul dispositivo:</div>
         <div class="code">482 913</div>
-        <span class="rej">Rifiuta</span>
+        <span class="rej" data-en="Decline">Rifiuta</span>
       </div>
     </div>
   </div>
+
+<script>
+  // ?lang=en: testi inglesi presi da data-en.
+  if (new URLSearchParams(location.search).get('lang') === 'en') {
+    document.documentElement.lang = 'en';
+    document.querySelectorAll('[data-en]').forEach(el => { el.innerHTML = el.dataset.en; });
+  }
+</script>
 </body>
 </html>

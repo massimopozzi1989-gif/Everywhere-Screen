@@ -152,8 +152,8 @@ struct HTTPConnection {
         send(status: "404 Not Found", type: "text/plain", body: Data("404".utf8))
     }
 
-    func unauthorized() {
-        json(["error": "Dispositivo non abbinato"], status: "401 Unauthorized")
+    func unauthorized(_ lang: Language) {
+        json(["error": lang.t("Dispositivo non abbinato", "Device not paired")], status: "401 Unauthorized")
     }
 
     func redirect(_ location: String) {

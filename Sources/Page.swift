@@ -1,3 +1,5 @@
+import Foundation
+
 enum Page {
     private static let head = #"""
     <meta charset="utf-8">
@@ -10,19 +12,19 @@ enum Page {
     """#
 
     /// Pagina per un tablet. Salvata sulla Home Screen gira a tutto schermo.
-    static func viewer(channel: Int) -> String {
+    static func viewer(channel: Int, lang: Language) -> String {
         """
         <!doctype html>
-        <html lang="it">
+        <html lang="\(lang.rawValue)">
         <head>
         \(head)
-        <meta name="apple-mobile-web-app-title" content="Schermo \(channel)">
+        <meta name="apple-mobile-web-app-title" content="\(lang.t("Schermo", "Screen")) \(channel)">
         <title>Everywhere Screen \(channel)</title>
         <style>\(viewerCSS)</style>
         </head>
         <body>
-        \(viewerHTML)
-        <script>const CH = \(channel);</script>
+        \(viewerHTML(lang))
+        <script>const CH = \(channel), T = \(scriptStrings(lang));</script>
         <script>\(viewerJS)</script>
         </body>
         </html>
@@ -30,11 +32,11 @@ enum Page {
     }
 
     /// Scelta dello schermo quando ne sono attivi più di uno.
-    static func index(channels: [Int]) -> String {
-        let links = channels.map { "<a href=\"/\($0)\">Schermo \($0)</a>" }.joined(separator: "\n")
+    static func index(channels: [Int], lang: Language) -> String {
+        let links = channels.map { "<a href=\"/\($0)\">\(lang.t("Schermo", "Screen")) \($0)</a>" }.joined(separator: "\n")
         return """
         <!doctype html>
-        <html lang="it">
+        <html lang="\(lang.rawValue)">
         <head>
         \(head)
         <meta name="apple-mobile-web-app-title" content="Everywhere Screen">
@@ -51,12 +53,36 @@ enum Page {
         <body>
         <main>
         <h1>Everywhere Screen</h1>
-        <p>Quale schermo mostra questo dispositivo?<br>Poi aggiungi la pagina alla Home Screen.</p>
+        <p>\(lang.t("Quale schermo mostra questo dispositivo?<br>Poi aggiungi la pagina alla Home Screen.",
+                    "Which screen should this device show?<br>Then add the page to the Home Screen."))</p>
         \(links)
         </main>
         </body>
         </html>
         """
+    }
+
+    /// Testi usati dal JavaScript della pagina.
+    private static func scriptStrings(_ l: Language) -> String {
+        let strings: [String: String] = [
+            "connecting": l.t("Connessione…", "Connecting…"),
+            "reconnecting": l.t("Riconnessione…", "Reconnecting…"),
+            "unreachable": l.t("Mac non raggiungibile…", "Can't reach the Mac…"),
+            "unreachableShort": l.t("Mac non raggiungibile.", "Can't reach the Mac."),
+            "retry": l.t("Riprova tra qualche secondo.", "Try again in a few seconds."),
+            "wrongCode": l.t("Codice errato.", "Wrong code."),
+            "androidPhone": l.t("Telefono Android", "Android phone"),
+            "androidTablet": l.t("Tablet Android", "Android tablet"),
+            "noFullscreen": l.t("Schermo intero non disponibile", "Full screen isn't available"),
+            "homeScreenHint": l.t("Per lo schermo intero: Condividi → Aggiungi alla schermata Home",
+                                  "For full screen: Share → Add to Home Screen"),
+            "controlOn": l.t("Controllo del Mac attivo", "Mac control on"),
+            "controlOff": l.t("Solo schermo: i tocchi non controllano il Mac", "Screen only: touches don't control the Mac"),
+            "labelOn": l.t("Controllo attivo", "Control on"),
+            "labelOff": l.t("Solo schermo", "Screen only"),
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: strings, options: .sortedKeys)) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static let viewerCSS = #"""
@@ -111,37 +137,37 @@ enum Page {
     .err { color: #ff6961; min-height: 1.3em; margin-top: 14px !important; }
     """#
 
-    private static let viewerHTML = #"""
+    private static func viewerHTML(_ l: Language) -> String { #"""
     <video id="v" muted autoplay playsinline disablepictureinpicture></video>
     <img id="i" alt="" hidden>
     <div id="surf"></div>
-    <div id="s">Connessione…</div>
+    <div id="s">\#(l.t("Connessione…", "Connecting…"))</div>
     <div id="ident"></div>
     <textarea id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     <div id="bar" hidden>
-      <button id="bKb" aria-label="Tastiera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M17.5 10h.01M8 14h8"/></svg></button>
-      <button id="bFs" aria-label="Schermo intero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path id="fsIcon" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-      <button id="bCtl" aria-label="Controllo del Mac"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3.5l12 7.2-5.3 1.4-2.6 5.4z"/></svg><span id="ctlLabel">Controllo attivo</span></button>
+      <button id="bKb" aria-label="\#(l.t("Tastiera", "Keyboard"))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M17.5 10h.01M8 14h8"/></svg></button>
+      <button id="bFs" aria-label="\#(l.t("Schermo intero", "Full screen"))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path id="fsIcon" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button id="bCtl" aria-label="\#(l.t("Controllo del Mac", "Mac control"))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3.5l12 7.2-5.3 1.4-2.6 5.4z"/></svg><span id="ctlLabel">\#(l.t("Controllo attivo", "Control on"))</span></button>
     </div>
     <div id="toast"></div>
-    <button id="fsHint" hidden><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Tocca per lo schermo intero</span></button>
+    <button id="fsHint" hidden><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>\#(l.t("Tocca per lo schermo intero", "Tap for full screen"))</span></button>
     <div id="pair" hidden>
       <div class="card">
         <h1>Everywhere Screen</h1>
         <div id="step1">
-          <p>Collega questo dispositivo al Mac.<br>Sul Mac comparirà un codice.</p>
-          <button id="pStart" class="primary">Collega</button>
+          <p>\#(l.t("Collega questo dispositivo al Mac.<br>Sul Mac comparirà un codice.", "Connect this device to the Mac.<br>A code will appear on the Mac."))</p>
+          <button id="pStart" class="primary">\#(l.t("Collega", "Connect"))</button>
           <p class="err" id="e1"></p>
         </div>
         <div id="step2" hidden>
-          <p>Inserisci il codice mostrato sul Mac.</p>
+          <p>\#(l.t("Inserisci il codice mostrato sul Mac.", "Enter the code shown on the Mac."))</p>
           <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000">
-          <button id="pOk" class="primary">Conferma</button>
+          <button id="pOk" class="primary">\#(l.t("Conferma", "Confirm"))</button>
           <p class="err" id="e2"></p>
         </div>
       </div>
     </div>
-    """#
+    """# }
 
     private static let viewerJS = #"""
     (() => {
@@ -166,7 +192,7 @@ enum Page {
     function deviceName() {
       const ua = navigator.userAgent;
       if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'iPad';
-      if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'Telefono Android' : 'Tablet Android';
+      if (/Android/.test(ua)) return /Mobile/.test(ua) ? T.androidPhone : T.androidTablet;
       if (/iPhone/.test(ua)) return 'iPhone';
       return 'Browser';
     }
@@ -179,7 +205,7 @@ enum Page {
       try { me = await api('/api/me'); } catch (e) { me = { status: 0 }; }
       if (me.status === 200) { $('pair').hidden = true; connect(); }
       else if (me.status === 401) showPairing();
-      else { status('Mac non raggiungibile…'); retry = setTimeout(boot, 2000); }
+      else { status(T.unreachable); retry = setTimeout(boot, 2000); }
     }
 
     function showPairing() {
@@ -192,11 +218,11 @@ enum Page {
       $('e1').textContent = '';
       try {
         const r = await api('/api/pair/start?name=' + encodeURIComponent(deviceName()));
-        if (!r.id) { $('e1').textContent = r.error || 'Riprova tra qualche secondo.'; return; }
+        if (!r.id) { $('e1').textContent = r.error || T.retry; return; }
         pairId = r.id;
         $('step1').hidden = true; $('step2').hidden = false;
         $('code').value = ''; $('e2').textContent = ''; $('code').focus();
-      } catch (e) { $('e1').textContent = 'Mac non raggiungibile.'; }
+      } catch (e) { $('e1').textContent = T.unreachableShort; }
     };
 
     $('pOk').onclick = async () => {
@@ -205,8 +231,8 @@ enum Page {
         const r = await api('/api/pair/confirm?id=' + encodeURIComponent(pairId) + '&code=' + encodeURIComponent(code));
         if (r.ok) { $('code').blur(); $('pair').hidden = true; connect(); return; }
         if (r.restart) { showPairing(); $('e1').textContent = r.error || ''; }
-        else $('e2').textContent = r.error || 'Codice errato.';
-      } catch (e) { $('e2').textContent = 'Mac non raggiungibile.'; }
+        else $('e2').textContent = r.error || T.wrongCode;
+      } catch (e) { $('e2').textContent = T.unreachableShort; }
     };
     $('code').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') $('pOk').click(); });
 
@@ -215,7 +241,7 @@ enum Page {
     function connect() {
       clearTimeout(retry);
       if (ws) { ws.onclose = null; ws.close(); }
-      status('Connessione…');
+      status(T.connecting);
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + CH);
       ws = sock;
       sock.binaryType = 'arraybuffer';
@@ -231,11 +257,12 @@ enum Page {
         if (m.t === 'init') { player.reset(m.codec); status(''); }
         else if (m.t === 'info') { allowed = !!m.control; autoFS = !!m.fs; updateBar(); offerFullscreen(); }
         else if (m.t === 'identify') identify(m.n);
+        else if (m.t === 'reload') location.reload();   // es. lingua cambiata sul Mac
       };
       sock.onclose = () => {
         if (ws !== sock) return;
         ws = null;
-        status('Riconnessione…');
+        status(T.reconnecting);
         retry = setTimeout(boot, 1000);   // boot ricontrolla anche l'abbinamento
       };
     }
@@ -321,7 +348,7 @@ enum Page {
     };
     video.addEventListener('error', () => player.restart());
     img.onload = () => status('');
-    img.onerror = () => { if (!useMSE) { status('Riconnessione…'); retry = setTimeout(boot, 1000); } };
+    img.onerror = () => { if (!useMSE) { status(T.reconnecting); retry = setTimeout(boot, 1000); } };
 
     // ---------- Tocco, Pencil, mouse ----------
 
@@ -495,8 +522,8 @@ enum Page {
 
     function enterFullscreen() {
       const f = root.requestFullscreen || root.webkitRequestFullscreen;
-      try { const r = f.call(root, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => toast('Schermo intero non disponibile')); }
-      catch (e) { toast('Schermo intero non disponibile'); }
+      try { const r = f.call(root, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => toast(T.noFullscreen)); }
+      catch (e) { toast(T.noFullscreen); }
     }
     function toggleFullscreen() {
       if (!fsElement()) { enterFullscreen(); return; }
@@ -509,7 +536,7 @@ enum Page {
       if (!autoFS || fsOffered || fsElement() || standalone) return;
       fsOffered = true;
       if (canFS) $('fsHint').hidden = false;
-      else toast('Per lo schermo intero: Condividi → Aggiungi alla schermata Home');
+      else toast(T.homeScreenHint);
     }
     $('fsHint').addEventListener('click', e => {
       e.stopPropagation();
@@ -540,7 +567,7 @@ enum Page {
       enabled = !enabled;
       if (!enabled) kb.blur();
       updateBar();
-      toast(enabled ? 'Controllo del Mac attivo' : 'Solo schermo: i tocchi non controllano il Mac');
+      toast(enabled ? T.controlOn : T.controlOff);
     });
     let toastTimer = null;
     function toast(text) {
@@ -556,7 +583,7 @@ enum Page {
       $('bCtl').hidden = !allowed;
       $('bCtl').classList.toggle('off', !enabled);
       bar.classList.toggle('ctl-off', !enabled);
-      $('ctlLabel').textContent = enabled ? 'Controllo attivo' : 'Solo schermo';
+      $('ctlLabel').textContent = enabled ? T.labelOn : T.labelOff;
       $('bKb').hidden = !(allowed && enabled);
     }
 

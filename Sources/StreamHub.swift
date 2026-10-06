@@ -245,6 +245,11 @@ final class StreamHub {
         }
     }
 
+    /// I tablet ricaricano la pagina (es. dopo il cambio di lingua).
+    func reloadClients() {
+        queue.async { self.viewers.values.forEach { $0.ws.send(json: ["t": "reload"]) } }
+    }
+
     /// Mostra il numero dello schermo sui tablet collegati.
     func identify() {
         queue.async {

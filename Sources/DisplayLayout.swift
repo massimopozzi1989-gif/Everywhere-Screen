@@ -8,11 +8,11 @@ enum ArrangementPreset: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .right: return "In fila a destra"
-        case .left: return "In fila a sinistra"
-        case .sides: return "Ai due lati"
-        case .above: return "Sopra"
-        case .below: return "Sotto"
+        case .right: return tr("In fila a destra", "In a row on the right")
+        case .left: return tr("In fila a sinistra", "In a row on the left")
+        case .sides: return tr("Ai due lati", "On both sides")
+        case .above: return tr("Sopra", "Above")
+        case .below: return tr("Sotto", "Below")
         }
     }
 

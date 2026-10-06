@@ -1,161 +1,165 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="Icona di Everywhere Screen">
+  <img src="docs/images/icon.png" width="128" alt="Everywhere Screen icon">
 </p>
 
 <h1 align="center">Everywhere Screen</h1>
 
+<p align="center"><b>English</b> · <a href="README.it.md">Italiano</a></p>
+
 <p align="center">
-  <b>Trasforma qualsiasi tablet o telefono in un secondo schermo per il tuo Mac.</b><br>
-  iPad, Android, iPhone: via Wi‑Fi, senza installare nulla sul dispositivo. Basta il browser.
+  <b>Turn any tablet or phone into a second display for your Mac.</b><br>
+  iPad, Android, iPhone: over Wi‑Fi, with nothing to install on the device. Just a browser.
 </p>
 
 <p align="center">
-  <a href="https://github.com/massimopozzi1989-gif/Everywhere-Screen/releases/latest"><img src="https://img.shields.io/github/v/release/massimopozzi1989-gif/Everywhere-Screen?label=Scarica&style=for-the-badge&color=3b82f6" alt="Scarica l'ultima versione"></a>
-  <img src="https://img.shields.io/badge/macOS-14%2B-111?style=for-the-badge&logo=apple" alt="macOS 14 o successivo">
+  <a href="https://github.com/massimopozzi1989-gif/Everywhere-Screen/releases/latest"><img src="https://img.shields.io/github/v/release/massimopozzi1989-gif/Everywhere-Screen?label=Download&style=for-the-badge&color=3b82f6" alt="Download the latest version"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-111?style=for-the-badge&logo=apple" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Apple%20Silicon-%E2%9C%93-111?style=for-the-badge" alt="Apple Silicon">
-  <img src="https://img.shields.io/github/downloads/massimopozzi1989-gif/Everywhere-Screen/total?style=for-the-badge&label=download&color=22c55e" alt="Download totali">
+  <img src="https://img.shields.io/github/downloads/massimopozzi1989-gif/Everywhere-Screen/total?style=for-the-badge&label=downloads&color=22c55e" alt="Total downloads">
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Un Mac con un iPad, un tablet Android e un telefono usati come schermi aggiuntivi">
+  <img src="docs/images/hero-en.png" alt="A Mac with an iPad, an Android tablet and a phone used as extra displays">
 </p>
 
 ---
 
-## Perché Everywhere Screen
+## Why Everywhere Screen
 
-Hai un vecchio iPad nel cassetto, un tablet Android o un telefono che non usi? Diventano uno
-**schermo esteso vero** del tuo Mac: ci trascini le finestre, ci tieni chat, note o la
-timeline mentre lavori sullo schermo principale.
+Got an old iPad in a drawer, an Android tablet or a spare phone? Make it a **real extended
+display** for your Mac: drag windows onto it and keep your chat, notes or timeline there while
+you work on the main screen.
 
-- 🖥️ **Schermi veri, non copie.** L'app crea fino a **8 schermi virtuali** che macOS vede come
-  monitor collegati. Ognuno prende automaticamente la risoluzione e l'orientamento del tablet.
-- 🌐 **Niente app sul tablet.** Si apre un indirizzo nel browser (Safari, Chrome…). Funziona anche
-  con iPad e Android vecchi che Sidecar non supporta.
-- ⚡ **Fluido.** Video H.264 accelerato in hardware, fino a 60 fps, con pochi millisecondi di
-  elaborazione sul Mac. Se il Wi‑Fi rallenta si saltano fotogrammi invece di accumulare ritardo.
-- ✍️ **Controlla il Mac dal tablet.** Tocco, doppio clic, trascinamento, clic destro, scroll a
-  due dita, **Apple Pencil con pressione**, tastiera a schermo e tastiere fisiche con le
-  scorciatoie (⌘C, ⌘V…). Puoi anche passare in modalità "solo schermo".
-- 📱 **Schermo intero** con un tocco, senza le barre del browser.
-- 🔒 **Abbinamento sicuro.** Ogni dispositivo si collega con un codice a 6 cifre mostrato sul Mac.
-  Puoi revocarlo quando vuoi. Nessun servizio cloud: tutto resta sulla tua rete.
-- 🧭 **Disposizione semplice.** Editor visuale e disposizioni pronte (a destra, a sinistra, ai due
-  lati, sopra, sotto) per decidere dove stanno i tablet rispetto al Mac.
+- 🖥️ **Real displays, not mirrors.** The app creates up to **8 virtual displays** that macOS
+  sees as connected monitors. Each one takes the resolution and orientation of its tablet.
+- 🌐 **No app on the tablet.** Open an address in the browser (Safari, Chrome…). Works with older
+  iPads and Android tablets that Sidecar doesn't support.
+- ⚡ **Smooth.** Hardware‑accelerated H.264 video, up to 60 fps, with just a few milliseconds of
+  processing on the Mac. When Wi‑Fi slows down it skips frames instead of building up lag.
+- ✍️ **Control your Mac from the tablet.** Tap, double‑click, drag, right‑click, two‑finger
+  scroll, **Apple Pencil with pressure**, on‑screen keyboard and hardware keyboards with
+  shortcuts (⌘C, ⌘V…). Or switch to "screen only" mode.
+- 📱 **Full screen** with one tap, without the browser bars.
+- 🔒 **Secure pairing.** Each device connects with a 6‑digit code shown on the Mac and can be
+  revoked at any time. No cloud service: everything stays on your network.
+- 🌍 **English and Italian.** Pick the language from the menu (Lingua · Language), or let it
+  follow your Mac and each tablet's browser.
+- 🧭 **Easy arrangement.** A visual editor and ready‑made layouts (right, left, both sides,
+  above, below) decide where the tablets sit around your Mac.
 
-## Come funziona
+## How it works
 
 <p align="center">
-  <img src="docs/images/steps.png" alt="1. Avvia l'app sul Mac. 2. Apri l'indirizzo sul tablet e premi Collega. 3. Inserisci il codice mostrato sul Mac.">
+  <img src="docs/images/steps-en.png" alt="1. Launch the app on your Mac. 2. Open the address on the tablet and tap Connect. 3. Enter the code shown on the Mac.">
 </p>
 
-1. **Scarica** il DMG dalla [pagina delle release](https://github.com/massimopozzi1989-gif/Everywhere-Screen/releases/latest),
-   aprilo e trascina **Everywhere Screen** in Applicazioni.
-2. **Avvia l'app.** Compare un'icona nella barra dei menu. Al primo avvio macOS chiede il permesso
-   **Registrazione schermo** (serve per inviare l'immagine al tablet).
-3. **Sul tablet**, connesso alla stessa rete Wi‑Fi del Mac, apri l'indirizzo mostrato nel menu
-   (per esempio `http://192.168.1.20:5050`), premi **Collega** e inserisci il codice.
-4. Fatto. Per usarlo come un'app, aggiungi la pagina alla **schermata Home** del tablet.
+1. **Download** the DMG from the [releases page](https://github.com/massimopozzi1989-gif/Everywhere-Screen/releases/latest),
+   open it and drag **Everywhere Screen** to Applications.
+2. **Launch the app.** An icon appears in the menu bar. On first launch macOS asks for the
+   **Screen Recording** permission (needed to send the picture to the tablet).
+3. **On the tablet**, on the same Wi‑Fi network as the Mac, open the address shown in the menu
+   (for example `http://192.168.1.20:5050`), tap **Connect** and enter the code.
+4. Done. To use it like an app, add the page to the tablet's **Home Screen**.
 
-> Per controllare il Mac dal tablet serve anche il permesso **Accessibilità**: l'app te lo
-> chiede la prima volta che tocchi lo schermo.
+> To control the Mac from the tablet, the app also needs the **Accessibility** permission:
+> it asks the first time you touch the screen.
 
-## Gesti
+## Gestures
 
-| Sul tablet | Sul Mac |
+| On the tablet | On the Mac |
 |---|---|
-| tap | clic |
-| doppio / triplo tap | doppio / triplo clic |
-| trascinare | trascinamento (selezione, spostare finestre) |
-| pressione lunga · tap a due dita | clic destro |
-| scorrere con due dita | scroll |
-| Apple Pencil | puntatore preciso con pressione |
-| pulsante ⌨︎ | tastiera a schermo |
-| pulsante ⛶ | schermo intero |
+| tap | click |
+| double / triple tap | double / triple click |
+| drag | drag (select, move windows) |
+| long press · two‑finger tap | right‑click |
+| two‑finger swipe | scroll |
+| Apple Pencil | precise pointer with pressure |
+| ⌨︎ button | on‑screen keyboard |
+| ⛶ button | full screen |
 
-## Everywhere Screen e Sidecar
+## Everywhere Screen vs. Sidecar
 
 | | Everywhere Screen | Sidecar (Apple) |
 |---|---|---|
-| Tablet Android e telefoni | ✅ | ❌ |
-| iPad vecchi | ✅ con un browser moderno | solo modelli recenti |
-| Stesso Apple ID richiesto | ❌ | ✅ |
-| App da installare sul dispositivo | nessuna | nessuna (solo iPad) |
-| Schermi in contemporanea | fino a 8 | 1 |
-| Apple Pencil | ✅ con pressione | ✅ |
+| Android tablets and phones | ✅ | ❌ |
+| Older iPads | ✅ with a modern browser | recent models only |
+| Same Apple ID required | ❌ | ✅ |
+| App to install on the device | none | none (iPad only) |
+| Simultaneous displays | up to 8 | 1 |
+| Apple Pencil | ✅ with pressure | ✅ |
 
-## Requisiti
+## Requirements
 
-- **Mac** con Apple Silicon (M1 o successivo) e **macOS 14 Sonoma** o successivo.
-- **Tablet o telefono** con un browser recente (Safari, Chrome). Sui browser più vecchi, senza
-  Media Source Extensions, l'app passa da sola a un flusso MJPEG compatibile.
-- Mac e dispositivo sulla **stessa rete Wi‑Fi**.
+- A **Mac** with Apple Silicon (M1 or later) and **macOS 14 Sonoma** or later.
+- A **tablet or phone** with a recent browser (Safari, Chrome). On older browsers without Media
+  Source Extensions, the app automatically switches to a compatible MJPEG stream.
+- Mac and device on the **same Wi‑Fi network**.
 
-Con 8 schermi Retina collegati insieme si arriva a circa 30 fps per schermo (misurato su M1 Max).
+With 8 Retina displays connected at once you get about 30 fps per display (measured on an M1 Max).
 
-## Domande frequenti
+## FAQ
 
 <details>
-<summary><b>Il tablet non si collega</b></summary>
+<summary><b>The tablet won't connect</b></summary>
 
-Controlla che Mac e tablet siano sulla stessa rete Wi‑Fi (non la rete "ospiti", che spesso isola
-i dispositivi) e scrivi l'indirizzo con `http://` davanti. Se il Firewall di macOS è attivo,
-consenti le connessioni in entrata per Everywhere Screen.
+Make sure the Mac and the tablet are on the same Wi‑Fi network (not a "guest" network, which
+often isolates devices) and type the address with `http://` in front. If the macOS Firewall is
+on, allow incoming connections for Everywhere Screen.
 </details>
 
 <details>
-<summary><b>Lo schermo del tablet resta nero</b></summary>
+<summary><b>The tablet screen stays black</b></summary>
 
-Apri Impostazioni di Sistema → Privacy e sicurezza → **Registrazione schermo** e abilita
-Everywhere Screen, poi riavvia l'app.
+Open System Settings → Privacy & Security → **Screen Recording**, enable Everywhere Screen and
+restart the app.
 </details>
 
 <details>
-<summary><b>I tocchi non controllano il Mac</b></summary>
+<summary><b>Touches don't control the Mac</b></summary>
 
-Serve il permesso **Accessibilità** (Impostazioni di Sistema → Privacy e sicurezza →
-Accessibilità). Controlla anche che sul tablet il pulsante in basso dica "Controllo attivo" e,
-nel menu dell'app, che il dispositivo abbia "Può controllare il Mac".
+The app needs the **Accessibility** permission (System Settings → Privacy & Security →
+Accessibility). Also check that the button at the bottom of the tablet says "Control on" and
+that, in the app menu, the device has "Can control the Mac" enabled.
 </details>
 
 <details>
-<summary><b>È sicuro?</b></summary>
+<summary><b>Is it safe?</b></summary>
 
-Senza abbinamento nessuno vede il tuo schermo né può controllare il Mac. Ogni dispositivo riceve
-un token personale, e sul Mac se ne conserva solo l'impronta. Dal menu puoi revocare un
-dispositivo o togliergli il controllo. L'immagine viaggia solo sulla tua rete locale, in HTTP non
-cifrato: usalo su reti di cui ti fidi.
+Without pairing, nobody can see your screen or control your Mac. Each device gets a personal
+token, and the Mac only stores its fingerprint. From the menu you can revoke a device or take
+away its control. The picture only travels over your local network, as unencrypted HTTP: use it
+on networks you trust.
 </details>
 
 <details>
-<summary><b>Perché non è sul Mac App Store?</b></summary>
+<summary><b>Why isn't it on the Mac App Store?</b></summary>
 
-Per creare schermi virtuali l'app usa un'API di macOS che Apple non consente nello Store (la
-stessa di BetterDisplay e DeskPad). L'app è comunque **firmata con Developer ID e notarizzata da
-Apple**, quindi si apre senza avvisi.
+To create virtual displays the app uses a macOS API that Apple doesn't allow in the Store (the
+same one BetterDisplay and DeskPad use). The app is still **signed with a Developer ID and
+notarized by Apple**, so it opens without warnings.
 </details>
 
 <details>
-<summary><b>Posso usarlo senza il Wi‑Fi?</b></summary>
+<summary><b>Can I use it without Wi‑Fi?</b></summary>
 
-Basta una rete locale comune: anche l'hotspot del telefono o un cavo Ethernet sul Mac vanno bene,
-purché il tablet raggiunga l'indirizzo del Mac.
+Any shared local network works: your phone's hotspot or an Ethernet cable on the Mac are fine,
+as long as the tablet can reach the Mac's address.
 </details>
 
-## Per sviluppatori
+## For developers
 
-Il progetto non usa Xcode: `swiftc` compila `Sources/*.swift`.
+The project doesn't use Xcode: `swiftc` compiles `Sources/*.swift`.
 
 ```bash
-./build.sh            # build/Everywhere Screen.app, firmata Developer ID
-./build.sh install    # la installa in /Applications e la avvia
-scripts/test.sh       # test della geometria delle disposizioni
-scripts/stress.sh     # stress test di server, streaming e abbinamento (frame sintetici, ~90 s)
-scripts/release.sh    # DMG firmato e notarizzato in dist/
+./build.sh            # build/Everywhere Screen.app, signed with Developer ID
+./build.sh install    # installs it in /Applications and launches it
+scripts/test.sh       # layout geometry tests
+scripts/stress.sh     # stress tests for server, streaming and pairing (synthetic frames, ~90 s)
+scripts/release.sh    # signed and notarized DMG in dist/
 ```
 
-Architettura e decisioni: [docs/specs](docs/specs/2026-09-24-everywhere-screen-design.md).
+Architecture and design decisions (in Italian): [docs/specs](docs/specs/2026-09-24-everywhere-screen-design.md).
 
 ---
 
-<p align="center">Fatto con ❤️ in Italia da Massimo Pozzi · Se ti è utile, lascia una ⭐</p>
+<p align="center">Made with ❤️ in Italy by Massimo Pozzi · If you find it useful, leave a ⭐</p>
