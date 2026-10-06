@@ -7,6 +7,8 @@ tramite browser, senza installare nulla sul tablet. Il tablet può anche control
 - Nome: **Everywhere Screen**, bundle id `com.massimopozzi.everywherescreen`.
 - Distribuzione: fuori dal Mac App Store (usa l'API privata `CGVirtualDisplay`), firmata
   Developer ID + notarizzata, DMG, aggiornamenti Sparkle da GitHub Releases.
+- Licenza: open source, GPL-3.0 (dal 2026-10-06). Installazione anche con Homebrew
+  (`massimopozzi1989-gif/tap/everywhere-screen`, aggiornato da `scripts/update-cask.sh`).
 - Modello: Free + Pro. Per ora nessun sistema di pagamento: `Edition.isPro = true`.
   Free (futuro): 1 schermo, solo visione. Pro: 8 schermi, controllo touch/Pencil/tastiera.
 - Sicurezza: abbinamento con PIN a 6 cifre mostrato sul Mac → token per dispositivo (cookie

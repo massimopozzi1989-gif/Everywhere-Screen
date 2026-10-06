@@ -8,7 +8,8 @@
 
 <p align="center">
   <b>Turn any tablet or phone into a second display for your Mac.</b><br>
-  iPad, Android, iPhone: over Wi‑Fi, with nothing to install on the device. Just a browser.
+  iPad, Android, iPhone: over Wi‑Fi, with nothing to install on the device. Just a browser.<br>
+  Free and open source.
 </p>
 
 <p align="center">
@@ -16,6 +17,7 @@
   <img src="https://img.shields.io/badge/macOS-14%2B-111?style=for-the-badge&logo=apple" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Apple%20Silicon-%E2%9C%93-111?style=for-the-badge" alt="Apple Silicon">
   <img src="https://img.shields.io/github/downloads/massimopozzi1989-gif/Everywhere-Screen/total?style=for-the-badge&label=downloads&color=22c55e" alt="Total downloads">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-111?style=for-the-badge" alt="License: GPL-3.0"></a>
 </p>
 
 <p align="center">
@@ -54,7 +56,10 @@ you work on the main screen.
 </p>
 
 1. **Download** the DMG from the [releases page](https://github.com/massimopozzi1989-gif/Everywhere-Screen/releases/latest),
-   open it and drag **Everywhere Screen** to Applications.
+   open it and drag **Everywhere Screen** to Applications. Or use [Homebrew](https://brew.sh):
+   ```bash
+   brew install --cask massimopozzi1989-gif/tap/everywhere-screen
+   ```
 2. **Launch the app.** An icon appears in the menu bar. On first launch macOS asks for the
    **Screen Recording** permission (needed to send the picture to the tablet).
 3. **On the tablet**, on the same Wi‑Fi network as the Mac, open the address shown in the menu
@@ -156,9 +161,21 @@ The project doesn't use Xcode: `swiftc` compiles `Sources/*.swift`.
 scripts/test.sh       # layout geometry tests
 scripts/stress.sh     # stress tests for server, streaming and pairing (synthetic frames, ~90 s)
 scripts/release.sh    # signed and notarized DMG in dist/
+scripts/update-cask.sh  # points the Homebrew cask to the new release
 ```
 
 Architecture and design decisions (in Italian): [docs/specs](docs/specs/2026-09-24-everywhere-screen-design.md).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: open an [issue](https://github.com/massimopozzi1989-gif/Everywhere-Screen/issues)
+or start a [discussion](https://github.com/massimopozzi1989-gif/Everywhere-Screen/discussions).
+Before a pull request, run `scripts/test.sh` and `scripts/stress.sh`.
+
+## License
+
+Everywhere Screen is free software, released under the [GNU General Public License v3.0](LICENSE).
+You can use, study, share and modify it; versions you distribute must stay under the same license.
 
 ---
 
