@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<!-- Sorgente dell'immagine di copertina del README. Rigenera con scripts/render-images.sh -->
+<style>
+  :root { --a: #545cfa; --b: #1ab8ed; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: -apple-system, "SF Pro Display", system-ui, sans-serif; color: #fff;
+    background:
+      radial-gradient(900px 500px at 50% 115%, rgba(26, 184, 237, .35), transparent 70%),
+      radial-gradient(700px 400px at 10% -10%, rgba(84, 92, 250, .45), transparent 70%),
+      #0b0d1a;
+    position: relative;
+  }
+  .title { position: absolute; top: 46px; left: 0; right: 0; text-align: center; }
+  .title h1 { margin: 0; font-size: 58px; font-weight: 800; letter-spacing: -1.5px; }
+  .title h1 span { background: linear-gradient(90deg, #8f95ff, #5fd6ff); -webkit-background-clip: text; color: transparent; }
+  .title p { margin: 10px 0 0; font-size: 23px; color: #b8bfdc; font-weight: 500; }
+
+  .stage { position: absolute; left: 0; right: 0; bottom: 0; height: 420px; }
+  svg.links { position: absolute; inset: 0; }
+
+  .screen { position: absolute; border-radius: 14px; background: #1b1f33; border: 7px solid #23283f;
+    box-shadow: 0 30px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
+  .desk { position: absolute; inset: 0; border-radius: 6px; overflow: hidden; background: linear-gradient(135deg, #3b44c9, #1592c4); }
+  .bar { position: absolute; top: 0; left: 0; right: 0; height: 9px; background: rgba(10, 12, 30, .55); }
+  .win { position: absolute; border-radius: 6px; background: #f4f6fb; box-shadow: 0 6px 16px rgba(0,0,0,.3); overflow: hidden; }
+  .win::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; background: #e3e7f1; }
+  .win::after { content: ""; position: absolute; top: 4px; left: 6px; width: 22px; height: 4px; border-radius: 2px;
+    background: radial-gradient(circle at 2px 2px, #ff5f57 2px, transparent 2.5px), radial-gradient(circle at 10px 2px, #febc2e 2px, transparent 2.5px), radial-gradient(circle at 18px 2px, #28c840 2px, transparent 2.5px); }
+  .lines { position: absolute; left: 10px; right: 10px; top: 20px; }
+  .lines i { display: block; height: 5px; border-radius: 3px; background: #d5dbea; margin-bottom: 6px; }
+  .tag { position: absolute; top: -26px; right: -26px; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 800; font-size: 21px; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: 0 8px 20px rgba(26,184,237,.4); z-index: 2; }
+  .label { position: absolute; font-size: 15px; font-weight: 600; color: #9aa3c7; text-align: center; white-space: nowrap; }
+
+  /* Mac */
+  .mac { left: 452px; top: 70px; width: 376px; height: 240px; border-radius: 16px 16px 6px 6px; border-width: 10px; }
+  .base { position: absolute; left: 412px; top: 309px; width: 456px; height: 18px; border-radius: 3px 3px 14px 14px;
+    background: linear-gradient(#cfd4e2, #8f96ad); }
+  .base::after { content: ""; position: absolute; left: 50%; top: 0; width: 70px; height: 6px; margin-left: -35px; border-radius: 0 0 6px 6px; background: #8f96ad; }
+
+  /* tablet */
+  .ipad { left: 70px; top: 95px; width: 290px; height: 214px; border-radius: 20px; border-width: 11px; }
+  .android { left: 900px; top: 52px; width: 196px; height: 290px; border-radius: 18px; border-width: 10px; }
+  .phone { left: 1135px; top: 170px; width: 96px; height: 190px; border-radius: 18px; border-width: 6px; }
+  .chip { position: absolute; top: 160px; padding: 9px 16px; border-radius: 999px; background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.1); font-size: 16px; color: #d6dbf3; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="title">
+    <h1>Everywhere <span>Screen</span></h1>
+    <p>Qualsiasi tablet o telefono diventa uno schermo del tuo Mac. Via Wi‑Fi, solo col browser.</p>
+  </div>
+
+  <div class="stage">
+    <svg class="links" width="1280" height="420" viewBox="0 0 1280 420" fill="none">
+      <defs>
+        <linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#7f87ff"/><stop offset="1" stop-color="#3ccaf6"/></linearGradient>
+      </defs>
+      <g stroke="url(#g)" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round" opacity=".9">
+        <path d="M452 190 C 420 190, 400 205, 362 205"/>
+        <path d="M828 170 C 860 160, 860 190, 900 190"/>
+        <path d="M828 230 C 950 300, 1060 330, 1135 270"/>
+      </g>
+    </svg>
+
+    <div class="screen ipad"><div class="desk"><div class="bar"></div>
+      <div class="win" style="left:18px;top:26px;width:150px;height:100px"><div class="lines"><i style="width:80%"></i><i></i><i style="width:60%"></i><i style="width:90%"></i></div></div>
+      <div class="win" style="left:120px;top:70px;width:132px;height:96px"><div class="lines"><i></i><i style="width:70%"></i><i style="width:85%"></i></div></div>
+      </div><div class="tag">1</div>
+    </div>
+    <div class="label" style="left:70px;top:330px;width:290px">iPad</div>
+
+    <div class="screen mac"><div class="desk"><div class="bar"></div>
+      <div class="win" style="left:24px;top:26px;width:190px;height:130px"><div class="lines"><i></i><i style="width:75%"></i><i style="width:90%"></i><i style="width:55%"></i></div></div>
+      <div class="win" style="left:170px;top:70px;width:170px;height:130px"><div class="lines"><i style="width:65%"></i><i></i><i style="width:80%"></i></div></div>
+    </div></div>
+    <div class="base"></div>
+    <div class="label" style="left:452px;top:340px;width:376px">Il tuo Mac</div>
+
+    <div class="screen android"><div class="desk" style="background:linear-gradient(160deg,#5b3fd6,#1aa3d6)"><div class="bar"></div>
+      <div class="win" style="left:14px;top:24px;width:148px;height:120px"><div class="lines"><i></i><i style="width:70%"></i><i style="width:90%"></i><i style="width:60%"></i></div></div>
+      <div class="win" style="left:30px;top:150px;width:132px;height:90px"><div class="lines"><i style="width:80%"></i><i></i></div></div>
+      </div><div class="tag">2</div>
+    </div>
+    <div class="label" style="left:900px;top:355px;width:196px">Tablet Android</div>
+
+    <div class="screen phone"><div class="desk" style="background:linear-gradient(160deg,#2c63e6,#16c2c9)"><div class="bar"></div>
+      <div class="win" style="left:8px;top:22px;width:68px;height:80px"><div class="lines" style="left:6px;right:6px"><i></i><i style="width:70%"></i><i></i></div></div>
+      </div><div class="tag" style="width:34px;height:34px;font-size:18px;border-radius:10px;right:-14px">3</div>
+    </div>
+    <div class="label" style="left:1115px;top:370px;width:136px">Telefono</div>
+
+  </div>
+  <div class="chip" style="left:50%;transform:translateX(-50%)">Fino a 8 schermi · Tocco, Apple Pencil e tastiera · Niente app sul tablet</div>
+</body>
+</html>
