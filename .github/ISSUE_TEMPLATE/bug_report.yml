@@ -1,0 +1,54 @@
+name: 🐛 Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Check the [FAQ](https://github.com/massimopozzi1989-gif/Everywhere-Screen#faq) first: connection, black screen and permission problems are covered there. You can write in English or Italian.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Everywhere Screen version
+      placeholder: "1.3.0"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS version
+      placeholder: "MacBook Pro M1 Max, macOS 26.7"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Tablet or phone, and browser
+      placeholder: "iPad 8th gen, Safari, iPadOS 18 / Samsung Galaxy Tab S9, Chrome"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Connecting / pairing
+        - Picture (black screen, lag, quality)
+        - Touch, Apple Pencil or keyboard control
+        - Virtual screens / arrangement
+        - Full screen
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: Screenshots of the tablet or of the app menu help a lot.
