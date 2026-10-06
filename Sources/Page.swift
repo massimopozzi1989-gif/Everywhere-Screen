@@ -86,6 +86,12 @@ enum Page {
     #bCtl { width: auto !important; display: flex !important; gap: 6px; padding: 0 12px 0 10px !important;
       font: 600 14px -apple-system, system-ui, sans-serif; white-space: nowrap; }
     #bCtl.off { opacity: 1; background: rgba(255, 159, 10, .9); color: #000; }
+    #bCtl[hidden] { display: none !important; }
+    #fsHint { position: fixed; inset: 0; border: 0; padding: 0; background: rgba(0, 0, 0, .35); color: #fff;
+      display: grid; place-items: center; font: 600 17px -apple-system, system-ui, sans-serif; touch-action: manipulation; }
+    #fsHint span { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 14px;
+      background: rgba(44, 44, 46, .92); }
+    #fsHint svg { width: 22px; height: 22px; }
     #toast { position: fixed; left: 50%; top: max(20px, env(safe-area-inset-top)); transform: translate(-50%, -8px);
       padding: 10px 16px; border-radius: 12px; background: rgba(44, 44, 46, .92); color: #fff; opacity: 0;
       font: 600 15px -apple-system, system-ui, sans-serif; pointer-events: none; transition: opacity .2s, transform .2s; }
@@ -114,9 +120,11 @@ enum Page {
     <textarea id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     <div id="bar" hidden>
       <button id="bKb" aria-label="Tastiera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M17.5 10h.01M8 14h8"/></svg></button>
+      <button id="bFs" aria-label="Schermo intero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path id="fsIcon" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button id="bCtl" aria-label="Controllo del Mac"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3.5l12 7.2-5.3 1.4-2.6 5.4z"/></svg><span id="ctlLabel">Controllo attivo</span></button>
     </div>
     <div id="toast"></div>
+    <button id="fsHint" hidden><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Tocca per lo schermo intero</span></button>
     <div id="pair" hidden>
       <div class="card">
         <h1>Everywhere Screen</h1>
@@ -142,7 +150,7 @@ enum Page {
     const video = $('v'), img = $('i'), surf = $('surf'), statusEl = $('s'), kb = $('kb'), bar = $('bar');
     const MS = window.MediaSource || window.ManagedMediaSource;
     let useMSE = !!(MS && MS.isTypeSupported && MS.isTypeSupported('video/mp4; codecs="avc1.640028"'));
-    let ws = null, retry = null, allowed = false, enabled = true, pairId = null, lastFit = '';
+    let ws = null, retry = null, allowed = false, enabled = true, pairId = null, lastFit = '', autoFS = false;
 
     const status = t => { statusEl.textContent = t || ''; };
     const clamp = v => Math.min(1, Math.max(0, v));
@@ -221,7 +229,7 @@ enum Page {
         if (typeof e.data !== 'string') { player.append(e.data); return; }
         const m = JSON.parse(e.data);
         if (m.t === 'init') { player.reset(m.codec); status(''); }
-        else if (m.t === 'info') { allowed = !!m.control; updateBar(); }
+        else if (m.t === 'info') { allowed = !!m.control; autoFS = !!m.fs; updateBar(); offerFullscreen(); }
         else if (m.t === 'identify') identify(m.n);
       };
       sock.onclose = () => {
@@ -329,7 +337,21 @@ enum Page {
     }
 
     const touches = new Map();
-    let mode = null, downAt = null, lastP = null, longTimer = null, twoAt = 0, scrolled = false;
+    let mode = null, downAt = null, downXY = null, lastP = null, longTimer = null, twoAt = 0, scrolled = false;
+
+    // Doppio/triplo tap = doppio/triplo clic. Il dito non torna mai nello stesso pixel: i tap
+    // vicini contano come lo stesso punto e il clic va dove è caduto il primo, come con un mouse.
+    let lastTap = null;
+    function tap(p, xy) {
+      const now = performance.now();
+      if (lastTap && lastTap.n < 3 && now - lastTap.t < 500 && Math.hypot(xy.x - lastTap.x, xy.y - lastTap.y) < 40) {
+        lastTap.n += 1; lastTap.t = now;
+      } else {
+        lastTap = { t: now, x: xy.x, y: xy.y, p: p, n: 1 };
+      }
+      mouse('d', lastTap.p, 0, { c: lastTap.n });
+      mouse('u', lastTap.p, 0, { c: lastTap.n });
+    }
     const acc = { x: 0, y: 0 };
     let accPending = false;
 
@@ -344,12 +366,12 @@ enum Page {
 
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
       if (touches.size === 1) {
-        mode = 'pending'; downAt = p; lastP = p;
+        mode = 'pending'; downAt = p; lastP = p; downXY = { x: e.clientX, y: e.clientY };
         mouse('m', p);
         clearTimeout(longTimer);
         longTimer = setTimeout(() => {          // pressione lunga = clic destro
           if (mode !== 'pending') return;
-          mode = 'done';
+          mode = 'done'; lastTap = null;
           mouse('d', downAt, 2); mouse('u', downAt, 2);
         }, 550);
       } else if (touches.size === 2) {
@@ -369,7 +391,7 @@ enum Page {
       t.x = e.clientX; t.y = e.clientY;
       if (mode === 'pending' && Math.hypot(e.clientX - t.sx, e.clientY - t.sy) > 8) {
         clearTimeout(longTimer);
-        mode = 'drag';
+        mode = 'drag'; lastTap = null;
         mouse('d', downAt, 0);
       }
       if (mode === 'drag') {
@@ -395,7 +417,7 @@ enum Page {
       if (!touches.delete(e.pointerId)) return;
       if (mode === 'pending') {
         clearTimeout(longTimer);
-        if (e.type === 'pointerup') { mouse('d', downAt, 0); mouse('u', downAt, 0); }
+        if (e.type === 'pointerup') tap(downAt, downXY);
         mode = null;
       } else if (mode === 'drag') {
         mouse('u', pt(e) || lastP, 0);
@@ -461,6 +483,49 @@ enum Page {
       }
     });
 
+    // ---------- Schermo intero ----------
+    // iPad e Android: Fullscreen API sull'intera pagina (video, tocchi e barra restano).
+    // Dalla Home Screen la pagina è già a tutto schermo; su iPhone l'API non esiste per le pagine.
+
+    const root = document.documentElement;
+    const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+    const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+    const canFS = !standalone && !!(root.requestFullscreen || root.webkitRequestFullscreen);
+    let fsOffered = false;
+
+    function enterFullscreen() {
+      const f = root.requestFullscreen || root.webkitRequestFullscreen;
+      try { const r = f.call(root, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => toast('Schermo intero non disponibile')); }
+      catch (e) { toast('Schermo intero non disponibile'); }
+    }
+    function toggleFullscreen() {
+      if (!fsElement()) { enterFullscreen(); return; }
+      const f = document.exitFullscreen || document.webkitExitFullscreen;
+      if (f) try { const r = f.call(document); if (r && r.catch) r.catch(() => {}); } catch (_) {}
+    }
+    // Il browser concede lo schermo intero solo dopo un tocco: con l'opzione attiva sul Mac lo si
+    // chiede una volta per pagina, e il tocco non arriva al Mac.
+    function offerFullscreen() {
+      if (!autoFS || fsOffered || fsElement() || standalone) return;
+      fsOffered = true;
+      if (canFS) $('fsHint').hidden = false;
+      else toast('Per lo schermo intero: Condividi → Aggiungi alla schermata Home');
+    }
+    $('fsHint').addEventListener('click', e => {
+      e.stopPropagation();
+      $('fsHint').hidden = true;
+      enterFullscreen();
+    });
+    $('fsHint').addEventListener('pointerdown', e => e.stopPropagation());
+    function fsChanged() {
+      const on = !!fsElement();
+      $('bFs').classList.toggle('on', on);
+      $('fsIcon').setAttribute('d', on ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5');
+      if (on) $('fsHint').hidden = true;
+    }
+    document.addEventListener('fullscreenchange', fsChanged);
+    document.addEventListener('webkitfullscreenchange', fsChanged);
+
     // ---------- Barra strumenti ----------
 
     let kbOpen = false, kbWasOpen = false;
@@ -470,6 +535,7 @@ enum Page {
     $('bKb').addEventListener('click', () => {
       if (kbWasOpen) kb.blur(); else { resetKb(); kb.focus(); }
     });
+    $('bFs').addEventListener('click', toggleFullscreen);
     $('bCtl').addEventListener('click', () => {
       enabled = !enabled;
       if (!enabled) kb.blur();
@@ -485,11 +551,13 @@ enum Page {
       toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
     }
     function updateBar() {
-      bar.hidden = !allowed;
+      bar.hidden = !allowed && !canFS;
+      $('bFs').hidden = !canFS;
+      $('bCtl').hidden = !allowed;
       $('bCtl').classList.toggle('off', !enabled);
       bar.classList.toggle('ctl-off', !enabled);
       $('ctlLabel').textContent = enabled ? 'Controllo attivo' : 'Solo schermo';
-      $('bKb').hidden = !enabled;
+      $('bKb').hidden = !(allowed && enabled);
     }
 
     document.addEventListener('visibilitychange', () => { if (!document.hidden) boot(); });

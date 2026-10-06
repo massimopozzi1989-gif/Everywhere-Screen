@@ -72,6 +72,14 @@ final class HTTPServer {
             guard let self else { return }
             var buf = buffer
             if let data { buf.append(data) }
+            // Una richiesta HTTP inizia col metodo (GET…). Altro, tipicamente un handshake TLS di
+            // un browser che prova prima https://, si chiude subito: così ripiega su http://
+            // invece di restare appeso fino al timeout.
+            if let first = buf.first, !(UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(first) {
+                timeout.cancel()
+                conn.cancel()
+                return
+            }
             if let end = buf.range(of: Data("\r\n\r\n".utf8)) {
                 timeout.cancel()
                 let head = String(decoding: buf[..<end.lowerBound], as: UTF8.self)

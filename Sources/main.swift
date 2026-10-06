@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var quality: Double { defaults.object(forKey: "quality") as? Double ?? 0.7 }
     private var scale: Double { defaults.object(forKey: "scale") as? Double ?? 1.0 }
     private var fps: Int { defaults.object(forKey: "fps") as? Int ?? 30 }
+    private var autoFullscreen: Bool { defaults.object(forKey: "autoFullscreen") as? Bool ?? true }
 
     /// Dimensioni in punti (HiDPI). Il verticale si ottiene con "Ruota" o con l'adattamento automatico.
     private let presets: [(String, Int, Int)] = [
@@ -127,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func addSlot(index: Int, width: Int, height: Int, autoFit: Bool) {
         let hub = StreamHub(channel: index, queue: web.queue)
         hub.configure(quality: quality, fps: fps)
+        hub.setAutoFullscreen(autoFullscreen)
         let slot = Slot(index: index, hub: hub, width: width, height: height, autoFit: autoFit)
         slot.virtual = VirtualScreen(index: index, width: width, height: height)
         if let v = slot.virtual { slot.width = v.width; slot.height = v.height }
@@ -379,6 +381,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 options: [("15", 15), ("30", 30), ("60", 60)]))
         menu.addItem(.separator())
 
+        let fullscreen = action("Schermo intero automatico sui tablet", #selector(toggleAutoFullscreen), nil)
+        fullscreen.state = autoFullscreen ? .on : .off
+        fullscreen.toolTip = "Al primo tocco il tablet nasconde le barre del browser. Si può sempre attivare o disattivare dal pulsante sul tablet."
+        menu.addItem(fullscreen)
+        menu.addItem(.separator())
+
         let login = action("Avvia al login", #selector(toggleLogin), nil)
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
@@ -502,6 +510,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         web.allHubs.forEach { $0.disconnect(deviceID: id) }
     }
 
+    @objc private func toggleAutoFullscreen() {
+        let on = !autoFullscreen
+        defaults.set(on, forKey: "autoFullscreen")
+        web.allHubs.forEach { $0.setAutoFullscreen(on) }
+    }
+
     @objc private func toggleLogin() {
         do {
             if SMAppService.mainApp.status == .enabled {
@@ -568,6 +582,14 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--render-icon"
         }
     }
     exit(0)
+}
+
+// Le app partono con un limite di 256 file aperti: la cattura e gli encoder ne usano già molti,
+// e con 8 schermi e tanti tablet il server smetterebbe di accettare connessioni.
+var fileLimit = rlimit()
+if getrlimit(RLIMIT_NOFILE, &fileLimit) == 0, fileLimit.rlim_cur < 4096 {
+    fileLimit.rlim_cur = min(4096, fileLimit.rlim_max)
+    setrlimit(RLIMIT_NOFILE, &fileLimit)
 }
 
 let app = NSApplication.shared

@@ -3,12 +3,16 @@
 Usa qualsiasi tablet (iPad, Android) come schermo esteso del Mac, via Wi-Fi, senza installare
 nulla sul tablet: basta il browser.
 
-- Fino a 3 schermi virtuali, creati dall'app (niente BetterDisplay); ognuno si adatta alla
-  risoluzione e all'orientamento del tablet che lo apre.
+- Fino a 8 schermi virtuali, creati dall'app (niente BetterDisplay); ognuno si adatta alla
+  risoluzione e all'orientamento del tablet che lo apre. Con 8 schermi Retina insieme si
+  arriva a 30 fps per schermo (su Apple M1 Max).
 - Video H.264 a bassa latenza (VideoToolbox → WebSocket → Media Source Extensions), con MJPEG
   come ripiego per i browser più vecchi.
-- Controllo del Mac dal tablet: tocco, trascinamento, clic destro, scroll a due dita,
-  Apple Pencil con pressione, tastiera a schermo e tastiere fisiche con scorciatoie.
+- Controllo del Mac dal tablet: tocco, doppio e triplo tap, trascinamento, clic destro,
+  scroll a due dita, Apple Pencil con pressione, tastiera a schermo e tastiere fisiche con
+  scorciatoie.
+- Schermo intero sul tablet (iPad, Android) dal pulsante nella barra o in automatico al primo
+  tocco (menu del Mac → "Schermo intero automatico sui tablet").
 - Abbinamento dei dispositivi con codice a 6 cifre mostrato sul Mac.
 
 Richiede macOS 14 o successivo su Apple Silicon.
@@ -17,7 +21,8 @@ Richiede macOS 14 o successivo su Apple Silicon.
 1. Avvia Everywhere Screen (icona nella barra dei menu).
 2. Sul tablet apri l'indirizzo mostrato nel menu, ad es. `http://192.168.1.20:5050/1`.
 3. Premi **Collega** e inserisci il codice che compare sul Mac.
-4. Aggiungi la pagina alla Home Screen per usarla a tutto schermo.
+4. Tocca "Tocca per lo schermo intero", oppure aggiungi la pagina alla Home Screen (su iPhone è
+   l'unico modo per nascondere le barre di Safari).
 
 Al primo avvio macOS chiede il permesso **Registrazione Schermo**; per controllare il Mac dal
 tablet serve anche **Accessibilità**.
@@ -26,11 +31,13 @@ tablet serve anche **Accessibilità**.
 | Tablet | Mac |
 |---|---|
 | tap | clic |
+| doppio / triplo tap | doppio / triplo clic (nel punto del primo tap) |
 | trascinare | trascinamento |
 | pressione lunga / tap a due dita | clic destro |
 | due dita | scorrimento |
 | Apple Pencil | mouse preciso con pressione |
 | pulsante tastiera | tastiera a schermo |
+| pulsante ⛶ | schermo intero sì/no |
 
 ## Build
 ```bash

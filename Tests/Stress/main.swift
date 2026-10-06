@@ -22,6 +22,10 @@ let outDir = args.count > 1 ? args[1] : "build/stress"
 let liveIndex = args.firstIndex(of: "--live")
 let port: UInt16 = liveIndex.flatMap { UInt16(args[$0 + 1]) } ?? 5098
 let liveToken = liveIndex.map { args[$0 + 2] }
+/// --serve: server con frame sintetici sul canale 1 per provare la pagina in un browser; gli input
+/// vengono stampati, non eseguiti.
+let serveMode = args.contains("--serve")
+var servedProducer: Producer?
 try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
 
 // MARK: - Report
@@ -405,6 +409,13 @@ final class TestViewer {
     }
 
     var segments: Int { lock.lock(); defer { lock.unlock() }; return events.count }
+
+    /// Chiude la registrazione sotto il lock: il thread del client potrebbe star scrivendo.
+    func stopRecording() {
+        lock.lock(); defer { lock.unlock() }
+        try? record?.close()
+        record = nil
+    }
     var isEnded: Bool { lock.lock(); defer { lock.unlock() }; return ended }
 
     func snapshot() -> [Event] { lock.lock(); defer { lock.unlock() }; return events }
@@ -822,8 +833,7 @@ func scenarioStreaming(token: String) {
     report.check(after.n > 60, "client lento dopo la ripresa: \(after.n) frame in 1,5 s")
     report.check(slow.errors.isEmpty, "client lento: \(slow.errors)")
     report.metric("client lento: keyframe ricevuti dopo la ripresa", "\(slow.snapshot().filter { $0.t > resumed && $0.key }.count)")
-    try? slow.record?.close()
-    slow.record = nil
+    slow.stopRecording()
     if let err = ffmpegErrors(slowPath) { report.check(false, "stream del client lento non decodificabile: \(err)") }
     else { info("ffmpeg decodifica senza errori lo stream del client lento (salto + ripresa)") }
 
@@ -913,7 +923,7 @@ func scenarioStreaming(token: String) {
     report.check(viewerCounts[1]!.value == 0 && viewerCounts[2]!.value == 0, "viewer rimasti dopo la chiusura: ch1=\(viewerCounts[1]!.value) ch2=\(viewerCounts[2]!.value)")
 
     // Il file registrato deve essere decodificabile da ffmpeg.
-    try? v1.first?.record?.close()
+    v1.first?.stopRecording()
     if let err = ffmpegErrors(recordPath) { report.check(false, "ffmpeg non decodifica lo stream registrato: \(err)") }
     else { info("ffmpeg decodifica senza errori 300 frame dello stream registrato") }
 }
@@ -954,6 +964,7 @@ func scenarioInput(token: String) {
         case 0: msg = ["t": "s", "dx": 3, "dy": -4]
         case 1: msg = ["t": "txt", "s": "ciao è 😀 \(i)"]
         case 2: msg = ["t": "k", "c": "KeyC", "m": 8]
+        case 3: msg = ["t": "p", "k": "d", "x": 0.5, "y": 0.5, "b": 0, "c": 2]
         default: msg = ["t": "p", "k": "m", "x": Double(i % 100) / 100, "y": 0.5]
         }
         let data = Array(try! JSONSerialization.data(withJSONObject: msg))
@@ -1027,6 +1038,38 @@ func scenarioRevoke() {
     report.check(waitUntil(3) { vs2.allSatisfy(\.isEnded) }, "viewer dello schermo rimosso ancora collegati")
     report.check(WSClient.open("/ws/3", cookie: t2).0 == 404 && httpGet("/3")?.status == 404, "schermo rimosso ancora raggiungibile")
     report.check(waitUntil(3) { viewerCounts[3]!.value == 0 }, "ch3 ha ancora \(viewerCounts[3]!.value) viewer")
+}
+
+/// Fino a 8 schermi: 8 canali Retina a 30 fps, ognuno col suo encoder e un tablet.
+func scenarioEightScreens(token: String) {
+    let rate = Int(ProcessInfo.processInfo.environment["EIGHT_FPS"] ?? "") ?? 30
+    section("8 schermi insieme: 8 canali Retina a \(rate) fps, un tablet ciascuno + 2 in più sul primo")
+    var extra: [StreamHub] = []
+    var producers: [Producer] = []
+    for ch in 11...18 {
+        let hub = StreamHub(channel: ch, queue: web.queue)
+        hub.configure(quality: 0.7, fps: rate)
+        web.register(hub)
+        extra.append(hub)
+        producers.append(Producer(hub: hub, width: ch % 2 == 0 ? 2160 : 1620, height: ch % 2 == 0 ? 1620 : 2160, fps: rate))
+    }
+    let rss0 = rssMB(), cpu0 = cpuSeconds()
+    var viewers = (11...18).compactMap { TestViewer.connect("s\($0)", channel: $0, cookie: token) }
+    viewers += (0..<2).compactMap { TestViewer.connect("s11-extra\($0)", channel: 11, cookie: token) }
+    producers.forEach { $0.start() }
+    let t0 = uptime()
+    sleep(8)
+    let t1 = uptime()
+    let fps = viewers.map { Double(stats($0.snapshot(), from: t0 + 2, to: t1).n) / (t1 - t0 - 2) }
+    report.check(viewers.count == 10, "tablet collegati \(viewers.count) su 10")
+    report.check((fps.min() ?? 0) >= Double(rate) * 0.9, "fps minimo con 8 schermi: \(fps.min() ?? 0) (attesi ≥ 90% di \(rate))")
+    for v in viewers { report.check(v.inits.count == 1 && v.errors.isEmpty, "\(v.name): init \(v.inits.count), errori \(v.errors)") }
+    report.metric("fps per tablet con 8 schermi (min/max)", String(format: "%.1f / %.1f", fps.min() ?? 0, fps.max() ?? 0))
+    report.metric("CPU con 8 schermi", String(format: "%.0f%%", (cpuSeconds() - cpu0) / (t1 - t0) * 100))
+    report.metric("memoria con 8 schermi", String(format: "%+.0f MB", rssMB() - rss0))
+    producers.forEach { $0.stop() }
+    viewers.forEach { $0.ws.sock.close() }
+    for (i, hub) in extra.enumerated() { web.unregister(channel: 11 + i); hub.closeAll() }
 }
 
 func scenarioPairingConcurrency() {
@@ -1181,8 +1224,22 @@ func runLive(token: String) {
     loris.forEach { $0.close() }
     for v in viewers { report.check(!v.isEnded && v.errors.isEmpty, "\(v.name) disturbato: \(v.errors)") }
 
-    try? viewers[0].record?.close()
-    viewers[0].record = nil
+    section("App vera: un tablet su ogni schermo")
+    let index = String(decoding: httpGet("/")?.body ?? [], as: UTF8.self)
+    let channels = index.components(separatedBy: "href=\"/").dropFirst().compactMap { Int($0.prefix { $0.isNumber }) }
+    report.metric("schermi attivi nell'app", channels.isEmpty ? "1" : channels.map(String.init).joined(separator: ", "))
+    let perScreen = (channels.isEmpty ? [1] : channels).compactMap { TestViewer.connect("schermo\($0)", channel: $0, cookie: token) }
+    let allFrames = waitUntil(8) { perScreen.allSatisfy { $0.segments > 0 } }
+    report.check(allFrames, "schermi senza immagine: \(perScreen.filter { $0.segments == 0 }.map(\.name))")
+    for v in perScreen {
+        report.check(v.errors.isEmpty, "\(v.name): \(v.errors)")
+        if let i = v.inits.first { info("\(v.name): \(i.w)×\(i.h), \(v.segments) frame") }
+    }
+    let busy = processStats(pid)
+    report.metric("app: memoria / CPU con tutti gli schermi collegati", String(format: "%.0f MB / %.1f%%", busy.rssMB, busy.cpu))
+    perScreen.forEach { $0.ws.sock.close() }
+
+    viewers[0].stopRecording()
     if let err = ffmpegErrors(path) { report.check(false, "stream reale non decodificabile: \(err)") }
     else { info("ffmpeg decodifica senza errori lo stream reale (\(viewers[0].segments) frame)") }
     viewers.forEach { $0.ws.sock.close() }
@@ -1198,6 +1255,20 @@ func run(_ name: String, _ body: () -> Void) { if only.isEmpty || only.contains(
 
 Thread {
     let wall = uptime()
+    if serveMode {
+        let pm = web.pairing
+        let r = pm.startRequest(name: "Browser di prova", host: "serve")!
+        guard case let .paired(token, _) = pm.confirm(id: r.id, code: r.code) else { exit(1) }
+        hubs[1]!.onInput = { msg, _ in
+            if let d = try? JSONSerialization.data(withJSONObject: msg, options: .sortedKeys) { print("INPUT " + String(decoding: d, as: UTF8.self)) }
+        }
+        hubs[1]!.setAutoFullscreen(args.contains("--fs"))
+        web.pairing.onShowRequest = { print("CODE \($0.name): \($0.code)") }
+        servedProducer = Producer(hub: hubs[1]!, width: 1620, height: 1214, fps: 30)
+        servedProducer?.start()
+        print("SERVE http://127.0.0.1:\(port)/1 token=\(token)")
+        return
+    }
     if let liveToken {
         runLive(token: liveToken)
         print(report.failures.isEmpty ? "\n✓ app vera: tutti i controlli passati" : "\n✗ \(report.failures.count) controlli falliti")
@@ -1212,6 +1283,7 @@ Thread {
     run("latency") { scenarioLatency(token: token) }
     run("streaming") { scenarioStreaming(token: token) }
     run("revoke") { scenarioRevoke() }
+    run("screens8") { scenarioEightScreens(token: token) }
     run("pairing") { scenarioPairingConcurrency() }
     run("micro") { scenarioMicro() }
     run("slowloris") { scenarioSlowloris() }

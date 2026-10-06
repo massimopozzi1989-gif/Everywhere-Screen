@@ -20,6 +20,8 @@ final class StreamHub {
     private let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     private var viewers: [ObjectIdentifier: Viewer] = [:]
+    /// Chiede ai tablet di passare a schermo intero al primo tocco (solo sulla coda del server).
+    private var autoFullscreen = false
     private var mjpegClients: [ObjectIdentifier: MJPEGClient] = [:]
     private var lastJPEG: Data?
 
@@ -126,7 +128,7 @@ final class StreamHub {
         }
         viewers[id] = viewer
         ws.start()
-        viewer.sendInfo()
+        viewer.sendInfo(fullscreen: autoFullscreen)
         updateCounts()
     }
 
@@ -231,8 +233,15 @@ final class StreamHub {
         queue.async {
             for viewer in self.viewers.values where viewer.deviceID == deviceID {
                 viewer.control = allowed
-                viewer.sendInfo()
+                viewer.sendInfo(fullscreen: self.autoFullscreen)
             }
+        }
+    }
+
+    func setAutoFullscreen(_ on: Bool) {
+        queue.async {
+            self.autoFullscreen = on
+            self.viewers.values.forEach { $0.sendInfo(fullscreen: on) }
         }
     }
 
@@ -279,8 +288,8 @@ private final class Viewer {
         self.control = control
     }
 
-    func sendInfo() {
-        ws.send(json: ["t": "info", "control": control && Edition.inputAllowed])
+    func sendInfo(fullscreen: Bool) {
+        ws.send(json: ["t": "info", "control": control && Edition.inputAllowed, "fs": fullscreen])
     }
 
     /// Ritorna true se serve un keyframe per questo client.

@@ -35,6 +35,14 @@ for preset in ArrangementPreset.allCases {
     checkValid([main] + rects(o, sizes), preset.rawValue)
 }
 
+// Disposizioni pronte con 8 tablet (il massimo): nessuna sovrapposizione, tutti attaccati.
+let eight = (0..<8).map { $0 % 3 == 1 ? portrait : ipad }
+for preset in ArrangementPreset.allCases {
+    let o = DisplayLayout.origins(for: preset, main: main, fixed: [], tablets: eight)
+    check(o.count == 8, "\(preset) con 8 tablet: 8 origini")
+    checkValid([main] + rects(o, eight), "\(preset.rawValue) con 8 tablet")
+}
+
 let right = DisplayLayout.origins(for: .right, main: main, fixed: [], tablets: sizes)
 check(right[0].x == 1512 && right[1].x == 2592 && right[2].x == 3412, "right: in fila da x=1512, ottenuto \(right)")
 check(right[0].y == 86, "right: centrato verticalmente sul Mac (y=86), ottenuto \(right[0].y)")

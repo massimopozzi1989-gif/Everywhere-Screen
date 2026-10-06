@@ -40,7 +40,7 @@ final class InputInjector {
         switch msg["t"] as? String {
         case "p":
             guard let kind = msg["k"] as? String, let x = msg["x"] as? Double, let y = msg["y"] as? Double else { return }
-            pointer(kind, x: x, y: y, button: msg["b"] as? Int ?? 0,
+            pointer(kind, x: x, y: y, button: msg["b"] as? Int ?? 0, clicks: msg["c"] as? Int,
                     pressure: msg["p"] as? Double, pen: (msg["pen"] as? Int ?? 0) != 0, display: display)
         case "s":
             scroll(dx: msg["dx"] as? Double ?? 0, dy: msg["dy"] as? Double ?? 0)
@@ -55,7 +55,9 @@ final class InputInjector {
 
     // MARK: - Mouse / Pencil
 
-    private func pointer(_ kind: String, x: Double, y: Double, button: Int, pressure: Double?, pen: Bool, display: CGDirectDisplayID) {
+    /// `clicks`: numero di clic deciso dal tablet (doppio/triplo tap). Senza, lo si ricava qui
+    /// dai tempi e dalla distanza dei clic, come per un mouse o la Pencil.
+    private func pointer(_ kind: String, x: Double, y: Double, button: Int, clicks: Int?, pressure: Double?, pen: Bool, display: CGDirectDisplayID) {
         let bounds = CGDisplayBounds(display)
         let point = CGPoint(x: bounds.minX + min(max(x, 0), 1) * (bounds.width - 1),
                             y: bounds.minY + min(max(y, 0), 1) * (bounds.height - 1))
@@ -65,7 +67,9 @@ final class InputInjector {
         switch kind {
         case "d":
             let now = ProcessInfo.processInfo.systemUptime
-            if let last = lastDown, last.button == button, now - last.time < NSEvent.doubleClickInterval,
+            if let clicks {
+                clickCount = min(max(clicks, 1), 3)
+            } else if let last = lastDown, last.button == button, now - last.time < NSEvent.doubleClickInterval,
                hypot(point.x - last.point.x, point.y - last.point.y) < 8 {
                 clickCount += 1
             } else {

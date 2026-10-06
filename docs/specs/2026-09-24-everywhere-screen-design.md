@@ -8,7 +8,7 @@ tramite browser, senza installare nulla sul tablet. Il tablet può anche control
 - Distribuzione: fuori dal Mac App Store (usa l'API privata `CGVirtualDisplay`), firmata
   Developer ID + notarizzata, DMG, aggiornamenti Sparkle da GitHub Releases.
 - Modello: Free + Pro. Per ora nessun sistema di pagamento: `Edition.isPro = true`.
-  Free (futuro): 1 schermo, solo visione. Pro: 3 schermi, controllo touch/Pencil/tastiera.
+  Free (futuro): 1 schermo, solo visione. Pro: 8 schermi, controllo touch/Pencil/tastiera.
 - Sicurezza: abbinamento con PIN a 6 cifre mostrato sul Mac → token per dispositivo (cookie
   HttpOnly). Senza token niente video né controllo. Dispositivi revocabili dal menu.
   HTTP in chiaro sulla LAN; HTTPS (profilo certificato da installare sul tablet) in una fase futura.
@@ -33,13 +33,17 @@ tramite browser, senza installare nulla sul tablet. Il tablet può anche control
   della Pencil. Richiede il permesso Accessibilità.
 
 ## Gesti sul tablet
-- tap = clic · trascinare = drag · pressione lunga o tap a due dita = clic destro
+- tap = clic · doppio/triplo tap = doppio/triplo clic (il tablet decide il numero di clic e lo
+  manda in `c`: le dita non tornano mai nello stesso punto, la tolleranza è 40 px e 500 ms)
+- schermo intero: Fullscreen API sull'intera pagina (iPad, Android); con l'opzione del Mac il
+  tablet lo propone al primo tocco (il browser lo concede solo dopo un gesto). Su iPhone: Home Screen.
+- trascinare = drag · pressione lunga o tap a due dita = clic destro
 - due dita = scroll · Apple Pencil = mouse preciso con pressione (hover se supportato)
 - mouse/trackpad dell'iPad = mouse · pulsante tastiera = tastiera a schermo; tastiere fisiche
   con scorciatoie (⌘C, ⌘V…)
 
 ## Protocollo WebSocket `/ws/N`
-- client → Mac (JSON): `hello{mse}`, `fit{w,h}`, `kf`, `p{k:d|m|u,x,y,b,p,pen}`, `s{dx,dy}`,
+- client → Mac (JSON): `hello{mse}`, `fit{w,h}`, `kf`, `p{k:d|m|u,x,y,b,c,p,pen}`, `s{dx,dy}`,
   `txt{s}`, `k{c,m}` (m: 1 shift, 2 ctrl, 4 alt, 8 cmd)
 - Mac → client: JSON `init{codec}` seguito da init segment binario, poi media segment binari;
-  JSON `info{control}`.
+  JSON `info{control,fs}`.
