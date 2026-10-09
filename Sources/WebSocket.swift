@@ -11,6 +11,12 @@ final class WebSocket {
 
     /// Byte accodati e non ancora consegnati al sistema: misura quanto il client è indietro.
     private(set) var pendingBytes = 0
+    private var pendingSince: TimeInterval?
+
+    /// Quanto dura un invio senza che la coda si svuoti (non misura il rendering remoto).
+    func pendingDuration(now: TimeInterval) -> TimeInterval {
+        pendingSince.map { max(0, now - $0) } ?? 0
+    }
 
     private let conn: NWConnection
     /// Byte ricevuti; quelli prima di `readIndex` sono già stati letti.
@@ -70,10 +76,12 @@ final class WebSocket {
         frame.append(payload)
 
         let size = frame.count
+        if pendingBytes == 0 { pendingSince = ProcessInfo.processInfo.systemUptime }
         pendingBytes += size
         conn.send(content: frame, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             self.pendingBytes -= size
+            if self.pendingBytes == 0 { self.pendingSince = nil }
             if error != nil { self.close() } else if self.pendingBytes == 0 { self.onDrain?() }
         })
     }

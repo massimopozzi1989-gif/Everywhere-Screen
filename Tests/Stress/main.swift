@@ -891,6 +891,18 @@ func scenarioStreaming(token: String) {
     sleep(1)
     for v in v2 { report.check(v.errors.isEmpty, "\(v.name) dopo la rotazione: \(v.errors)") }
 
+    // Cambiare fps deve aggiornare anche la timeline MP4 del client esistente.
+    section("Cambio fps: nuova timeline per i viewer già collegati")
+    let initCounts = v2.map { $0.inits.count }
+    hubs[2]!.configure(quality: 0.7, fps: 60)
+    report.check(waitUntil(3) { zip(v2, initCounts).allSatisfy { $0.0.inits.count > $0.1 } },
+                 "cambio fps senza nuovo init per tutti i viewer")
+    let updatedCounts = v2.map { $0.inits.count }
+    hubs[2]!.configure(quality: 0.7, fps: 30)
+    report.check(waitUntil(3) { zip(v2, updatedCounts).allSatisfy { $0.0.inits.count > $0.1 } },
+                 "ritorno a 30 fps senza nuovo init per tutti i viewer")
+    for v in v2 { report.check(v.errors.isEmpty, "\(v.name) dopo il cambio fps: \(v.errors)") }
+
     // --- MJPEG ---
     section("MJPEG: 3 client su ch2")
     let jpegCounts = (0..<3).map { _ in Counter() }

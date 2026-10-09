@@ -179,7 +179,7 @@ final class StreamHub {
         encoder.requestKeyframe()
         guard !keyframeScheduled else { return }
         keyframeScheduled = true
-        queue.asyncAfter(deadline: .now() + 0.25) {
+        queue.asyncAfter(deadline: .now() + 0.05) {
             self.keyframeScheduled = false
             self.refresh()
         }
@@ -285,7 +285,9 @@ private final class Viewer {
     private var muxer = FMP4Muxer(fps: 30)
 
     /// Oltre questa quantità di dati non ancora inviati il client è troppo indietro.
-    private static let maxBacklog = 1_500_000
+    private static let maxBacklog = 256_000
+    private static let maxPendingDuration: TimeInterval = 0.12
+    private var configuredFPS = 0
 
     init(ws: WebSocket, deviceID: String, control: Bool) {
         self.ws = ws
@@ -302,18 +304,19 @@ private final class Viewer {
         // Rete lenta: invece di accumulare ritardo si saltano i frame. Il keyframe per ripartire
         // si chiede solo quando il client ha smaltito l'arretrato (onDrain): chiederlo a ogni
         // frame trasformerebbe in keyframe anche lo stream di tutti gli altri client.
-        if ws.pendingBytes > Self.maxBacklog {
+        if ws.pendingBytes > Self.maxBacklog || ws.pendingDuration(now: now) > Self.maxPendingDuration {
             if stalledSince == nil { stalledSince = now }
             waitingForKey = true
             return false
         }
         stalledSince = nil
-        if needsInit || frame.sps != sps {
+        if needsInit || frame.sps != sps || configuredFPS != fps {
             guard frame.isKey else { waitingForKey = true; return true }
-            ws.send(json: ["t": "init", "codec": frame.codec, "w": frame.width, "h": frame.height])
+            ws.send(json: ["t": "init", "codec": frame.codec, "w": frame.width, "h": frame.height, "fps": fps])
             ws.send(binary: FMP4Muxer.initSegment(for: frame))
             muxer = FMP4Muxer(fps: fps)
             sps = frame.sps
+            configuredFPS = fps
             needsInit = false
             waitingForKey = false
         }

@@ -159,6 +159,7 @@ Il progetto non usa Xcode: `swiftc` compila `Sources/*.swift`.
 ./build.sh            # build/Everywhere Screen.app, firmata Developer ID
 ./build.sh install    # la installa in /Applications e la avvia
 scripts/test.sh       # test della geometria delle disposizioni
+node Tests/Player/main.js # test di latenza e recupero del player (Node.js)
 scripts/stress.sh     # stress test di server, streaming e abbinamento (frame sintetici, ~90 s)
 scripts/release.sh    # DMG firmato e notarizzato in dist/
 scripts/update-cask.sh  # aggiorna il cask Homebrew alla nuova release

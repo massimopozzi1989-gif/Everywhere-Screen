@@ -254,7 +254,7 @@ enum Page {
       sock.onmessage = e => {
         if (typeof e.data !== 'string') { player.append(e.data); return; }
         const m = JSON.parse(e.data);
-        if (m.t === 'init') { player.reset(m.codec); status(''); }
+        if (m.t === 'init') { player.reset(m.codec, m.fps); status(''); }
         else if (m.t === 'info') { allowed = !!m.control; autoFS = !!m.fs; updateBar(); offerFullscreen(); }
         else if (m.t === 'identify') identify(m.n);
         else if (m.t === 'reload') location.reload();   // es. lingua cambiata sul Mac
@@ -301,9 +301,11 @@ enum Page {
     // ---------- Video H.264 (Media Source Extensions) ----------
 
     const player = {
-      ms: null, sb: null, q: [], url: null, skip: false,
-      reset(codec) {
+      ms: null, sb: null, q: [], url: null, skip: false, fps: 30,
+      reset(codec, fps) {
         this.q = []; this.sb = null; this.skip = false;
+        this.fps = Math.min(60, Math.max(1, Number(fps) || 30));
+        video.playbackRate = 1;
         const ms = new MS();
         this.ms = ms;
         if (window.ManagedMediaSource && ms instanceof window.ManagedMediaSource) video.disableRemotePlayback = true;
@@ -312,7 +314,7 @@ enum Page {
           try { this.sb = ms.addSourceBuffer('video/mp4; codecs="' + codec + '"'); }
           catch (e) { fallbackMJPEG(); return; }
           this.sb.mode = 'segments';
-          this.sb.addEventListener('updateend', () => this.after());
+          this.sb.addEventListener('updateend', () => { if (this.ms === ms) this.after(); });
           this.pump();
         }, { once: true });
         if (this.url) URL.revokeObjectURL(this.url);
@@ -320,24 +322,39 @@ enum Page {
         video.src = this.url;
       },
       // Fino al prossimo init si scartano i segmenti: senza keyframe non sono decodificabili.
-      restart() { this.q = []; this.skip = true; send({ t: 'kf' }); },
+      restart() {
+        if (this.skip || !useMSE) return;
+        this.q = []; this.skip = true; send({ t: 'kf' });
+      },
       append(buf) {
         if (this.skip) return;
         // Il decoder non tiene il passo: invece di accumulare ritardo e memoria si riparte da un keyframe.
-        if (this.q.length > 60) { this.restart(); return; }
-        this.q.push(buf); this.pump();
+        const now = performance.now();
+        if (this.q.length >= Math.max(4, Math.ceil(this.fps * 0.12)) ||
+            (this.q.length && now - this.q[0].at > 120)) { this.restart(); return; }
+        this.q.push({ buf: buf, at: now }); this.pump();
       },
       pump() {
         const sb = this.sb;
-        if (!sb || sb.updating || !this.q.length || this.ms.readyState !== 'open') return;
-        try { sb.appendBuffer(this.q.shift()); } catch (e) { this.restart(); }
+        if (this.skip || !sb || sb.updating || !this.q.length || this.ms.readyState !== 'open') return;
+        if (performance.now() - this.q[0].at > 120) { this.restart(); return; }
+        try { sb.appendBuffer(this.q.shift().buf); } catch (e) { this.restart(); }
       },
       after() {
-        const sb = this.sb, b = sb.buffered;
+        const sb = this.sb;
+        if (!sb || this.skip) return;
+        const b = sb.buffered;
         if (b.length) {
           const start = b.start(0), end = b.end(b.length - 1);
           // Resta sempre a ridosso dell'ultimo frame: niente ritardo accumulato.
-          if (video.currentTime < start || end - video.currentTime > 0.3) video.currentTime = Math.max(start, end - 0.05);
+          const target = Math.max(0.02, 1.5 / this.fps), lag = end - video.currentTime;
+          if (video.currentTime < start || lag > Math.max(0.08, 3 / this.fps)) {
+            video.currentTime = Math.max(start, end - target);
+            video.playbackRate = 1;
+          } else {
+            // Piccoli arretrati si assorbono senza seek e senza interrompere il movimento.
+            video.playbackRate = lag > target + 0.02 ? 1.08 : 1;
+          }
           if (video.paused) video.play().catch(() => {});
           if (!sb.updating && video.currentTime - start > 30) {
             try { sb.remove(start, video.currentTime - 10); return; } catch (e) {}
