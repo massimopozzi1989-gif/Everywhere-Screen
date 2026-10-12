@@ -97,6 +97,8 @@ enum Page {
       font: 700 26vmin -apple-system, system-ui, sans-serif; pointer-events: none; opacity: 0;
       transform: scale(.85); transition: opacity .2s, transform .2s; }
     #ident.show { opacity: 1; transform: scale(1); }
+    #dbg { position: fixed; left: 8px; bottom: 8px; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,.6);
+           color: #0f0; font: 12px ui-monospace, Menlo, monospace; pointer-events: none; z-index: 9; }
     #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px;
       border: 0; padding: 0; resize: none; }
     #bar { position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
@@ -245,14 +247,22 @@ enum Page {
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + CH);
       ws = sock;
       sock.binaryType = 'arraybuffer';
+      let received = 0;
       sock.onopen = () => {
         sock.send(JSON.stringify({ t: 'hello', mse: useMSE }));
         lastFit = ''; fit();
         video.hidden = !useMSE; img.hidden = useMSE;
         if (!useMSE) img.src = '/stream/' + CH + '?t=' + Date.now();
+        watch(sock);
       };
       sock.onmessage = e => {
-        if (typeof e.data !== 'string') { player.append(e.data); return; }
+        if (typeof e.data !== 'string') {
+          // Conferma al Mac quanto è arrivato: così vede il ritardo vero della rete e salta i
+          // frame invece di accumularli nei buffer del Wi-Fi.
+          received += e.data.byteLength;
+          if (sock.readyState === 1) sock.send('{"t":"a","b":' + received + '}');
+          player.append(e.data); return;
+        }
         const m = JSON.parse(e.data);
         if (m.t === 'init') { player.reset(m.codec, m.fps); status(''); }
         else if (m.t === 'info') { allowed = !!m.control; autoFS = !!m.fs; updateBar(); offerFullscreen(); }
@@ -298,6 +308,21 @@ enum Page {
       connect();
     }
 
+    // Il video deve partire entro pochi secondi dalla connessione: se il decoder del browser
+    // resta bloccato si riconnette, e dopo due tentativi falliti si passa a MJPEG.
+    // Così lo schermo non resta mai nero con la connessione aperta.
+    let watchTimer = null, videoFailures = 0;
+    function watch(sock) {
+      clearTimeout(watchTimer);
+      if (!useMSE) return;
+      watchTimer = setTimeout(() => {
+        if (ws !== sock || !useMSE) return;
+        if (video.readyState >= 2 && video.videoWidth) { videoFailures = 0; return; }
+        if (document.hidden) { watch(sock); return; }
+        if (++videoFailures >= 2) fallbackMJPEG(); else connect();
+      }, 6000);
+    }
+
     // ---------- Video H.264 (Media Source Extensions) ----------
 
     const player = {
@@ -328,42 +353,74 @@ enum Page {
       },
       append(buf) {
         if (this.skip) return;
-        // Il decoder non tiene il passo: invece di accumulare ritardo e memoria si riparte da un keyframe.
+        // Il decoder è bloccato (non solo lento): si riparte da un keyframe invece di accumulare
+        // memoria. I piccoli arretrati li smaltisce pump() in un colpo solo.
         const now = performance.now();
-        if (this.q.length >= Math.max(4, Math.ceil(this.fps * 0.12)) ||
-            (this.q.length && now - this.q[0].at > 120)) { this.restart(); return; }
+        if (this.q.length >= this.fps * 2 || (this.q.length && now - this.q[0].at > 1000)) { this.restart(); return; }
         this.q.push({ buf: buf, at: now }); this.pump();
       },
       pump() {
         const sb = this.sb;
         if (this.skip || !sb || sb.updating || !this.q.length || this.ms.readyState !== 'open') return;
-        if (performance.now() - this.q[0].at > 120) { this.restart(); return; }
-        try { sb.appendBuffer(this.q.shift().buf); } catch (e) { this.restart(); }
+        // Tutti i segmenti in attesa in un solo append: niente coda che cresce di un frame per
+        // ogni giro di updateend. Il player poi si riallinea all'ultimo frame in after().
+        let data;
+        if (this.q.length === 1) data = this.q[0].buf;
+        else {
+          let size = 0;
+          for (const s of this.q) size += s.buf.byteLength;
+          data = new Uint8Array(size);
+          let at = 0;
+          for (const s of this.q) { data.set(new Uint8Array(s.buf), at); at += s.buf.byteLength; }
+        }
+        this.q = [];
+        try { sb.appendBuffer(data); } catch (e) { this.restart(); }
       },
       after() {
         const sb = this.sb;
         if (!sb || this.skip) return;
         const b = sb.buffered;
         if (b.length) {
-          const start = b.start(0), end = b.end(b.length - 1);
-          // Resta sempre a ridosso dell'ultimo frame: niente ritardo accumulato.
-          const target = Math.max(0.02, 1.5 / this.fps), lag = end - video.currentTime;
-          if (video.currentTime < start || lag > Math.max(0.08, 3 / this.fps)) {
+          const start = b.start(0), end = b.end(b.length - 1), frame = 1 / this.fps;
+          const target = Math.max(0.02, 1.5 * frame), lag = end - video.currentTime;
+          // Resta a ridosso dell'ultimo frame accelerando un po' la riproduzione: un salto
+          // (seek) obbliga il decoder a ripartire dall'ultimo keyframe, fino a 10 s prima,
+          // e su un iPad si vede come uno scatto. Si salta solo per ritardi grandi.
+          if (video.currentTime < start || lag > 0.5) {
             video.currentTime = Math.max(start, end - target);
             video.playbackRate = 1;
-          } else {
-            // Piccoli arretrati si assorbono senza seek e senza interrompere il movimento.
-            video.playbackRate = lag > target + 0.02 ? 1.08 : 1;
+          } else if (lag > target + frame) {
+            video.playbackRate = Math.min(1.5, 1 + (lag - target) * 4);
+          } else if (lag <= target) {
+            video.playbackRate = 1;
           }
           if (video.paused) video.play().catch(() => {});
-          if (!sb.updating && video.currentTime - start > 30) {
-            try { sb.remove(start, video.currentTime - 10); return; } catch (e) {}
+          // Libera la memoria dei frame già mostrati. Chrome lascia correre la riproduzione oltre
+          // l'ultimo frame quando ne arrivano meno degli fps (schermo fermo): il limite è quindi
+          // l'ultimo frame, altrimenti si cancellerebbe anche il keyframe ancora necessario.
+          const played = Math.min(video.currentTime, end);
+          if (!sb.updating && played - start > 30) {
+            try { sb.remove(start, played - 10); return; } catch (e) {}
           }
         }
         this.pump();
       }
     };
     video.addEventListener('error', () => player.restart());
+
+    // Diagnostica con ?debug nell'indirizzo: ritardo del player, velocità, frame ricevuti e scartati.
+    if (/[?&]debug\b/.test(location.search)) {
+      const el = document.createElement('div'); el.id = 'dbg'; document.body.appendChild(el);
+      let lastFrames = 0, lastAt = performance.now();
+      setInterval(() => {
+        const b = video.buffered, q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+        const now = performance.now(), frames = q ? q.totalVideoFrames : 0;
+        const fps = (frames - lastFrames) * 1000 / (now - lastAt); lastFrames = frames; lastAt = now;
+        const lag = b.length ? Math.round((b.end(b.length - 1) - video.currentTime) * 1000) : '-';
+        el.textContent = (useMSE ? 'H.264' : 'MJPEG') + ' · lag ' + lag + ' ms · ×' + video.playbackRate.toFixed(2) +
+          ' · ' + fps.toFixed(0) + ' fps · scartati ' + (q ? q.droppedVideoFrames : '-');
+      }, 500);
+    }
     img.onload = () => status('');
     img.onerror = () => { if (!useMSE) { status(T.reconnecting); retry = setTimeout(boot, 1000); } };
 

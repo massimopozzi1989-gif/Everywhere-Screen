@@ -20,7 +20,8 @@ setrlimit(RLIMIT_NOFILE, &fdLimit)
 let args = CommandLine.arguments
 let outDir = args.count > 1 ? args[1] : "build/stress"
 let liveIndex = args.firstIndex(of: "--live")
-let port: UInt16 = liveIndex.flatMap { UInt16(args[$0 + 1]) } ?? 5098
+let port: UInt16 = liveIndex.flatMap { UInt16(args[$0 + 1]) }
+    ?? args.firstIndex(of: "--port").flatMap { UInt16(args[$0 + 1]) } ?? 5098
 let liveToken = liveIndex.map { args[$0 + 2] }
 /// --serve: server con frame sintetici sul canale 1 per provare la pagina in un browser; gli input
 /// vengono stampati, non eseguiti.
@@ -392,6 +393,10 @@ final class TestViewer {
     private var expectInit = false
     private var lastSeq: UInt32 = 0
     private var nextDecode: UInt64 = 0
+    /// Byte binari ricevuti: il browser vero li conferma a ogni messaggio ({"t":"a","b":…}).
+    private var received = 0
+    /// nil = non conferma (vecchio client); altrimenti ritardo delle conferme (Wi-Fi simulato).
+    var ackDelay: Double?
     var record: FileHandle?
     var recordLimit = 0
 
@@ -401,10 +406,11 @@ final class TestViewer {
     }
 
     static func connect(_ name: String, channel: Int, cookie: String, mse: Bool = true, rcvbuf: Int32? = nil,
-                        autostart: Bool = true) -> TestViewer? {
+                        autostart: Bool = true, ackDelay: Double? = nil) -> TestViewer? {
         let (status, ws) = WSClient.open("/ws/\(channel)", cookie: cookie, rcvbuf: rcvbuf)
         guard let ws else { report.check(false, "\(name): handshake WebSocket fallito (HTTP \(status))"); return nil }
         let v = TestViewer(name: name, ws: ws)
+        v.ackDelay = ackDelay
         ws.send(json: ["t": "hello", "mse": mse])
         if autostart { v.start() }
         return v
@@ -454,6 +460,12 @@ final class TestViewer {
             default: break
             }
         case 2:
+            received += payload.count
+            if let delay = ackDelay {
+                let ack: [String: Any] = ["t": "a", "b": received], ws = self.ws
+                if delay <= 0 { ws.send(json: ack) }
+                else { DispatchQueue.global().asyncAfter(deadline: .now() + delay) { ws.send(json: ack) } }
+            }
             if expectInit {
                 expectInit = false
                 if !validInit(payload) { fail("init segment non valido") }
@@ -783,7 +795,8 @@ func scenarioStreaming(token: String) {
     let p1 = Producer(hub: hubs[1]!, width: 2160, height: 1620, fps: 60)
     let p2 = Producer(hub: hubs[2]!, width: 1620, height: 2160, fps: 30)
     let rss0 = rssMB(), cpu0 = cpuSeconds()
-    let v1 = (0..<8).compactMap { TestViewer.connect("ch1-v\($0)", channel: 1, cookie: token) }
+    // Metà dei viewer conferma la ricezione come il browser vero, metà no (client vecchi).
+    let v1 = (0..<8).compactMap { TestViewer.connect("ch1-v\($0)", channel: 1, cookie: token, ackDelay: $0 < 4 ? 0 : nil) }
     let v2 = (0..<4).compactMap { TestViewer.connect("ch2-v\($0)", channel: 2, cookie: token) }
     let recordPath = startRecording(v1[0], "ch1", limit: 300)
     p1.start(); p2.start()
@@ -963,6 +976,45 @@ func scenarioLatency(token: String) {
     report.metric("latenza encode+mux+rete p50 / p99", "\(ms(percentile(lat, 0.5))) / \(ms(percentile(lat, 0.99)))")
     report.check(percentile(lat, 0.99) < 0.05, "latenza p99 \(ms(percentile(lat, 0.99)))")
     v.ws.sock.close()
+}
+
+/// Il Mac consegna i frame al sistema subito, ma il Wi-Fi li trattiene: senza conferme dal
+/// browser il ritardo si accumulerebbe nei buffer TCP senza che il server lo veda.
+func scenarioWiFiLag(token: String) {
+    section("Wi-Fi in ritardo: conferme del browser ritardate di 400 ms per 3 s")
+    let hub = StreamHub(channel: 4, queue: web.queue)
+    hub.configure(quality: 0.7, fps: 60)
+    web.register(hub)
+    defer { web.unregister(channel: 4); hub.closeAll() }
+    let p = Producer(hub: hub, width: 2160, height: 1620, fps: 60)
+    guard let healthy = TestViewer.connect("wifi-sano", channel: 4, cookie: token, ackDelay: 0),
+          let lagging = TestViewer.connect("wifi-lento", channel: 4, cookie: token, ackDelay: 0) else { return }
+    let path = startRecording(lagging, "wifi-lento", limit: 1_000_000)
+    p.start(); defer { p.stop() }
+    sleep(2)
+    let t0 = uptime()
+    lagging.ackDelay = 0.4
+    sleep(3)
+    let t1 = uptime()
+    lagging.ackDelay = 0
+    sleep(3)
+    let t2 = uptime()
+    let during = stats(lagging.snapshot(), from: t0 + 0.5, to: t1)
+    let after = stats(lagging.snapshot(), from: t2 - 1.5, to: t2)
+    let sane = stats(healthy.snapshot(), from: t0, to: t2)
+    report.metric("viewer in ritardo: fps durante / dopo", String(format: "%.1f / %.1f", Double(during.n) / (t1 - t0 - 0.5), Double(after.n) / 1.5))
+    report.metric("viewer sano: fps e keyframe nel frattempo", String(format: "%.1f fps, %.1f%% keyframe", Double(sane.n) / (t2 - t0), Double(sane.keys) / Double(max(1, sane.n)) * 100))
+    // Senza controllo arriverebbero tutti i 60 frame/s accumulando ritardo; con il controllo il
+    // server ne invia al massimo 200 ms alla volta, poi aspetta le conferme e riparte da un keyframe.
+    report.check(Double(during.n) / (t1 - t0 - 0.5) < 30, "il server non salta i frame per un client con 400 ms di ritardo: \(during.n) frame")
+    report.check(Double(after.n) / 1.5 > 50, "il client non torna a 60 fps quando il Wi-Fi si riprende: \(after.n) frame in 1,5 s")
+    report.check(Double(sane.n) / (t2 - t0) > 50, "il viewer sano rallenta per colpa di quello in ritardo")
+    report.check(Double(sane.keys) / Double(max(1, sane.n)) < 0.1, "troppi keyframe sul viewer sano")
+    report.check(healthy.errors.isEmpty && lagging.errors.isEmpty, "errori: \(healthy.errors) \(lagging.errors)")
+    lagging.stopRecording()
+    if let err = ffmpegErrors(path) { report.check(false, "stream del client in ritardo non decodificabile: \(err)") }
+    else { info("ffmpeg decodifica senza errori lo stream del client in ritardo (salti + ripresa)") }
+    healthy.ws.sock.close(); lagging.ws.sock.close()
 }
 
 func scenarioInput(token: String) {
@@ -1330,6 +1382,7 @@ Thread {
     run("input") { scenarioInput(token: token) }
     run("latency") { scenarioLatency(token: token) }
     run("streaming") { scenarioStreaming(token: token) }
+    run("wifi") { scenarioWiFiLag(token: token) }
     run("revoke") { scenarioRevoke() }
     run("screens8") { scenarioEightScreens(token: token) }
     run("lang") { scenarioLanguage(token: token) }

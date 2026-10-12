@@ -7,54 +7,55 @@ Existing native APIs are sufficient for this optimization.
 
 ## Changes
 
-- ScreenCaptureKit uses its minimum pool of 3 surfaces rather than 6. The hub
-  already replaces pending capture frames with the newest one. A smaller pool
-  reduces retained surfaces, but can drop frames sooner if processing stalls.
-  See [Apple's queueDepth documentation](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/queuedepth).
-- VideoToolbox is explicitly asked for zero compression frame delay in addition
-  to real-time encoding and disabled B-frames. Unsupported properties remain
-  nonfatal, as in the existing encoder configuration. See
-  [Apple's MaxFrameDelayCount documentation](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_maxframedelaycount).
-- A viewer stops accepting dependent frames when its outstanding send queue
-  exceeds 256 KB or remains nonempty for 120 ms, replacing the 1.5 MB limit.
-  These measure local transport backlog, not remote presentation or TCP ACKs;
-  bytes already submitted to TCP cannot be withdrawn. Recovery waits for a
-  keyframe so skipping frames preserves decodability.
-- Coalesced recovery refreshes wait 50 ms rather than 250 ms. Requests remain
-  coalesced across viewers to avoid a keyframe storm on healthy devices.
-- The browser now bounds its append queue by age (120 ms) and frame rate
-  (4–8 segments at 30–60 fps), rather than accepting more than 60 segments.
-  Pending dependent segments are discarded until a fresh init/keyframe arrives.
-- At 30/60 fps the player seeks toward the live edge when behind by more than
-  100/80 ms, instead of 300 ms. Its target margin is 50/25 ms respectively.
-  Smaller delays are absorbed at 1.08× playback speed, returning to 1× when
-  caught up. These are recovery thresholds, not guaranteed end-to-end latency.
-- FPS changes reinitialize the existing viewer's MP4 timeline and report the
-  new rate to the browser. Late SourceBuffer callbacks from a replaced stream
-  are ignored, and repeated recovery requests are suppressed.
+Revised on 2026-10-12 (1.3.2) after testing the first version of these changes.
+
+- **Real end-to-end lag.** The browser acknowledges every binary message it
+  receives (`{"t":"a","b":<total bytes>}`). The server tracks the age of the
+  oldest unacknowledged frame: above 200 ms it stops sending dependent frames
+  and resumes with a keyframe once everything sent has arrived. This sees the
+  delay held in the Mac's TCP buffers and on Wi-Fi, which the local send queue
+  cannot. Clients that never acknowledge (older pages, test clients) keep the
+  local-queue checks below.
+- **Local send queue.** A viewer is behind when its oldest send has waited
+  250 ms or more than 1 MB is queued. The first version measured "time since the
+  queue was last empty", which at 60 fps never resets even on a fast network and
+  caused needless skips and keyframes.
+- **Adaptive bitrate.** When every video viewer of a channel falls behind, the
+  bitrate drops by 30% (down to 35%) and climbs back 15% every 2 s after 4 s
+  without trouble. A single slow or sleeping tablet does not lower the quality
+  of the others.
+- **Player.** Segments queued while the SourceBuffer is busy are appended in one
+  call. The player restarts from a keyframe only when the decoder is stuck for
+  1 s, not after 120 ms. It catches up with the live edge by playing up to 1.5×
+  faster and seeks only when more than 500 ms behind: a seek makes the decoder
+  start again from the last keyframe (up to 10 s earlier), visible as a stutter
+  on an iPad. Old data is freed up to the newest frame, never past it: Chrome
+  lets the playhead run ahead of the buffer on a static screen and the previous
+  rule could delete the frame still needed (frozen image).
+- **Watchdog.** If no video is decoded 6 s after connecting, the page reconnects;
+  after a second failure it switches to MJPEG.
+- `?debug` in the address shows player lag, playback rate, decoded fps and
+  dropped frames.
+- ScreenCaptureKit uses 4 surfaces (the hub can hold two: the one being encoded
+  and the last one, kept for refreshes). VideoToolbox keeps
+  `MaxFrameDelayCount = 0`; recovery keyframes are coalesced over 50 ms; FPS
+  changes reinitialize the MP4 timeline (unchanged from the first version).
 
 ## Verification
 
-- `scripts/test.sh`: display layout geometry.
-- `node Tests/Player/main.js`: actual embedded JavaScript syntax and player
-  behavior with deterministic MediaSource doubles: decoder stalls, bursts,
-  stale queued segments, one recovery request, stale callbacks, live-edge
-  correction at 30/60 fps, and init/keyframe ordering.
-- `scripts/stress.sh`: synthetic video over real loopback sockets, including
-  input flood, authorization, slow/disconnected clients, FPS and resolution
-  changes, MJPEG, eight simultaneous displays, and FFmpeg decoding.
-- Native app compiled with the project's optimized Swift compiler settings.
+- `scripts/test.sh`, `node Tests/Player/main.js`: layout geometry and the real
+  embedded player with MediaSource doubles (batched appends, stuck decoder,
+  live-edge catch-up by playback rate, buffer removal never past the newest
+  frame, stale callbacks, segment order).
+- `scripts/stress.sh`: synthetic video over real sockets. Half of the streaming
+  viewers acknowledge like the browser, half do not. New scenario "Wi-Fi in
+  ritardo": a viewer whose acknowledgements are delayed by 400 ms receives about
+  22 fps instead of 60 (frames skipped, not queued), returns to 60 fps when the
+  delay ends, its recording decodes with FFmpeg, and a healthy viewer on the
+  same channel keeps 60 fps with 1.4% keyframes.
+- Safari (iPadOS 26 simulator) against the synthetic stream with `?debug`:
+  player lag 2–4 ms, 30 fps decoded, no dropped frames.
 
-In the initial comparison on this Mac, synthetic 1280×800 encode/mux/loopback
-latency was 10.5/16.5 ms at p50/p99 before and 9.7/12.8 ms after. This is a
-single run, not an isolated benchmark or a measurement of browser presentation.
-The optimized streaming test maintained ~60 fps across eight viewers on one
-channel and ~30 fps across four on another; eight Retina display channels
-also maintained ~30 fps each.
-
-Physical iPad/Android Wi-Fi and Safari rendering must still be checked on the
-user's devices, particularly switching from a static screen to dragging a window,
-scrolling, Pencil drawing, and recovering after Wi-Fi interruption. Browser tests
-with doubles do not establish real Safari playback latency. The local test app
-is in `build/optimized/Everywhere Screen.app`; it has a local Developer ID
-signature without a timestamp and has not been notarized or released.
+Not yet measured: physical iPad/Android over real Wi-Fi (switching from a static
+screen to dragging a window, scrolling, Pencil, Wi-Fi interruptions). Use
+`?debug` on the device to read the actual player lag.

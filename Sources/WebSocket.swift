@@ -11,11 +11,15 @@ final class WebSocket {
 
     /// Byte accodati e non ancora consegnati al sistema: misura quanto il client è indietro.
     private(set) var pendingBytes = 0
-    private var pendingSince: TimeInterval?
+    /// Istante di accodamento di ogni invio non ancora consegnato, in ordine (le conferme di
+    /// Network.framework arrivano nello stesso ordine degli invii).
+    private var pendingTimes: [TimeInterval] = []
+    private var pendingHead = 0
 
-    /// Quanto dura un invio senza che la coda si svuoti (non misura il rendering remoto).
-    func pendingDuration(now: TimeInterval) -> TimeInterval {
-        pendingSince.map { max(0, now - $0) } ?? 0
+    /// Da quanto aspetta l'invio più vecchio non ancora consegnato al sistema. Non è "da quanto
+    /// la coda non è vuota": a 60 fps gli invii si sovrappongono anche su una rete veloce.
+    func pendingAge(now: TimeInterval) -> TimeInterval {
+        pendingHead < pendingTimes.count ? max(0, now - pendingTimes[pendingHead]) : 0
     }
 
     private let conn: NWConnection
@@ -76,12 +80,17 @@ final class WebSocket {
         frame.append(payload)
 
         let size = frame.count
-        if pendingBytes == 0 { pendingSince = ProcessInfo.processInfo.systemUptime }
         pendingBytes += size
+        pendingTimes.append(ProcessInfo.processInfo.systemUptime)
         conn.send(content: frame, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             self.pendingBytes -= size
-            if self.pendingBytes == 0 { self.pendingSince = nil }
+            self.pendingHead += 1
+            if self.pendingHead == self.pendingTimes.count {
+                self.pendingTimes.removeAll(keepingCapacity: true); self.pendingHead = 0
+            } else if self.pendingHead > 256 {
+                self.pendingTimes.removeFirst(self.pendingHead); self.pendingHead = 0
+            }
             if error != nil { self.close() } else if self.pendingBytes == 0 { self.onDrain?() }
         })
     }

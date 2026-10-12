@@ -46,9 +46,10 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         config.colorMatrix = CGDisplayStream.yCbCrMatrix_ITU_R_709_2
         config.showsCursor = true
-        // Il consumer conserva solo l'ultimo frame: bastano le tre superfici minime,
-        // senza un pool aggiuntivo di frame vecchi quando la codifica rallenta.
-        config.queueDepth = 3
+        // Il consumer tiene solo l'ultimo frame, ma ne trattiene fino a due (quello in codifica e
+        // l'ultimo, per i refresh): con il minimo di 3 superfici ScreenCaptureKit resterebbe senza
+        // spazio appena l'encoder hardware è conteso tra più schermi.
+        config.queueDepth = 4
 
         let s = SCStream(filter: filter, configuration: config, delegate: self)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: frameQueue)

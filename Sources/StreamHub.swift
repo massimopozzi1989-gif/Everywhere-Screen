@@ -35,6 +35,8 @@ final class StreamHub {
     private var _displayID: CGDirectDisplayID = 0
     private var _quality = 0.7
     private var _fps = 30
+    /// Riduzione del bitrate quando la rete di un viewer non tiene il passo (1 = nessuna).
+    private var _congestion = 1.0
 
     var displayID: CGDirectDisplayID {
         get { lock.lock(); defer { lock.unlock() }; return _displayID }
@@ -84,13 +86,13 @@ final class StreamHub {
         latest = nil
         drainScheduled = false
         let wantsH264 = h264Count > 0, wantsJPEG = mjpegCount > 0
-        let quality = _quality, fps = _fps
+        let quality = _quality, fps = _fps, congestion = _congestion
         lock.unlock()
         guard let pb else { return }
 
         if wantsH264 {
             encoder.fps = fps
-            encoder.referenceBitrate = Self.bitrate(forQuality: quality)
+            encoder.referenceBitrate = Int(Double(Self.bitrate(forQuality: quality)) * congestion)
             encoder.encode(pb, pts: CMClockGetTime(CMClockGetHostTimeClock()))
         }
         if wantsJPEG {
@@ -119,7 +121,7 @@ final class StreamHub {
         // Il client ha smaltito l'arretrato: se aspetta un keyframe lo si chiede ora (anche a
         // schermo fermo, quando non arriverebbero frame nuovi).
         ws.onDrain = { [weak self] in
-            guard let self, let viewer = self.viewers[id], viewer.wantsVideo, viewer.waitingForKey else { return }
+            guard let self, let viewer = self.viewers[id], viewer.readyForKeyframe else { return }
             self.scheduleKeyframe()
         }
         ws.onClose = { [weak self] in
@@ -144,6 +146,11 @@ final class StreamHub {
             viewer.needsInit = true
             updateCounts()
             if viewer.wantsVideo { requestKeyframe() }
+        case "a":
+            // Conferma di ricezione dal browser: misura il ritardo reale, buffer TCP e Wi-Fi compresi.
+            if let bytes = (msg["b"] as? NSNumber)?.int64Value, viewer.acknowledge(bytes), viewer.readyForKeyframe {
+                scheduleKeyframe()
+            }
         case "kf":
             viewer.needsInit = true
             requestKeyframe()
@@ -161,14 +168,37 @@ final class StreamHub {
     private func deliver(_ frame: EncodedFrame) {
         lock.lock(); let fps = _fps; lock.unlock()
         let now = ProcessInfo.processInfo.systemUptime
-        var needKey = false
+        var needKey = false, newStall = false, allStalled = true
         var dead: [Viewer] = []
         for viewer in viewers.values where viewer.wantsVideo {
+            let wasStalled = viewer.stalledSince != nil
             if viewer.send(frame, fps: fps, now: now) { needKey = true }
-            if let since = viewer.stalledSince, now - since > Self.stallTimeout { dead.append(viewer) }
+            if let since = viewer.stalledSince {
+                if !wasStalled { newStall = true; viewer.lastStall = now }
+                if now - since > Self.stallTimeout { dead.append(viewer) }
+            }
+            if now - viewer.lastStall > 5 { allStalled = false }
         }
         dead.forEach { $0.ws.close() }
         if needKey { scheduleKeyframe() }
+        adaptBitrate(congested: newStall && allStalled, now: now)
+    }
+
+    /// Quando tutti i viewer del canale restano indietro il bitrate scende del 30% (fino al 35%),
+    /// così il keyframe per ripartire e i frame successivi passano davvero; poi risale piano se
+    /// la rete regge. Un Wi-Fi debole così si stabilizza invece di alternare blocchi e salti.
+    /// Un solo tablet in difficoltà (o in standby) non peggiora l'immagine degli altri.
+    private var lastCongestion: TimeInterval = 0
+    private var lastRaise: TimeInterval = 0
+    private func adaptBitrate(congested: Bool, now: TimeInterval) {
+        lock.lock(); defer { lock.unlock() }
+        if congested {
+            _congestion = max(0.35, _congestion * 0.7)
+            lastCongestion = now
+        } else if _congestion < 1, now - lastCongestion > 4, now - lastRaise > 2 {
+            _congestion = min(1, _congestion * 1.15)
+            lastRaise = now
+        }
     }
 
     /// Keyframe "ritardato": se lo schermo è fermo non arriverebbero frame nuovi, quindi dopo
@@ -266,7 +296,10 @@ final class StreamHub {
 
     private func updateCounts() {
         let h264 = viewers.values.filter(\.wantsVideo).count
-        lock.lock(); h264Count = h264; mjpegCount = mjpegClients.count; lock.unlock()
+        lock.lock()
+        h264Count = h264; mjpegCount = mjpegClients.count
+        if h264 == 0 { _congestion = 1 }
+        lock.unlock()
         onViewersChanged?(viewers.count + mjpegClients.count)
     }
 }
@@ -281,13 +314,27 @@ private final class Viewer {
     private(set) var waitingForKey = true
     /// Da quando il client è troppo indietro per ricevere frame.
     private(set) var stalledSince: TimeInterval?
+    /// Ultima volta che è rimasto indietro (per il bitrate adattivo del canale).
+    var lastStall: TimeInterval = -.infinity
     private var sps = Data()
     private var muxer = FMP4Muxer(fps: 30)
 
-    /// Oltre questa quantità di dati non ancora inviati il client è troppo indietro.
-    private static let maxBacklog = 256_000
-    private static let maxPendingDuration: TimeInterval = 0.12
+    /// Limite di memoria per i dati non ancora consegnati al sistema.
+    private static let maxBacklog = 1_000_000
+    /// Un invio fermo così a lungo nella coda locale: la rete non tiene il passo.
+    private static let maxPendingAge: TimeInterval = 0.25
+    /// Ritardo massimo dei frame inviati e non ancora confermati dal browser. È la misura che
+    /// conta sul Wi-Fi: comprende i buffer TCP del Mac, la rete e il browser stesso.
+    private static let maxInFlightAge: TimeInterval = 0.2
     private var configuredFPS = 0
+
+    /// Conferme dal browser: abilitate dalla prima ricevuta (i client che non le inviano usano
+    /// solo la coda locale). Ogni voce: byte binari cumulativi dopo un invio e il suo istante.
+    private var acks = false
+    private var sentBytes: Int64 = 0
+    private var ackedBytes: Int64 = 0
+    private var inFlight: [(end: Int64, at: TimeInterval)] = []
+    private var inFlightHead = 0
 
     init(ws: WebSocket, deviceID: String, control: Bool) {
         self.ws = ws
@@ -299,12 +346,41 @@ private final class Viewer {
         ws.send(json: ["t": "info", "control": control && Edition.inputAllowed, "fs": fullscreen])
     }
 
+    /// Il client aspetta un keyframe e non ha più arretrato: è il momento di chiederlo.
+    var readyForKeyframe: Bool {
+        wantsVideo && waitingForKey && ws.pendingBytes == 0 && inFlightHead == inFlight.count
+    }
+
+    /// Registra una conferma; ritorna true se non resta nulla in viaggio.
+    func acknowledge(_ bytes: Int64) -> Bool {
+        acks = true
+        ackedBytes = min(max(ackedBytes, bytes), sentBytes)
+        while inFlightHead < inFlight.count, inFlight[inFlightHead].end <= ackedBytes { inFlightHead += 1 }
+        if inFlightHead == inFlight.count {
+            inFlight.removeAll(keepingCapacity: true); inFlightHead = 0
+            return true
+        }
+        if inFlightHead > 256 { inFlight.removeFirst(inFlightHead); inFlightHead = 0 }
+        return false
+    }
+
+    private func sendBinary(_ data: Data, now: TimeInterval) {
+        sentBytes += Int64(data.count)
+        inFlight.append((sentBytes, now))
+        ws.send(binary: data)
+    }
+
+    private func isBehind(now: TimeInterval) -> Bool {
+        if ws.pendingBytes > Self.maxBacklog || ws.pendingAge(now: now) > Self.maxPendingAge { return true }
+        return acks && inFlightHead < inFlight.count && now - inFlight[inFlightHead].at > Self.maxInFlightAge
+    }
+
     /// Ritorna true se serve un keyframe per questo client.
     func send(_ frame: EncodedFrame, fps: Int, now: TimeInterval) -> Bool {
         // Rete lenta: invece di accumulare ritardo si saltano i frame. Il keyframe per ripartire
-        // si chiede solo quando il client ha smaltito l'arretrato (onDrain): chiederlo a ogni
-        // frame trasformerebbe in keyframe anche lo stream di tutti gli altri client.
-        if ws.pendingBytes > Self.maxBacklog || ws.pendingDuration(now: now) > Self.maxPendingDuration {
+        // si chiede solo quando il client ha smaltito l'arretrato (onDrain o ultima conferma):
+        // chiederlo a ogni frame trasformerebbe in keyframe anche lo stream degli altri client.
+        if isBehind(now: now) {
             if stalledSince == nil { stalledSince = now }
             waitingForKey = true
             return false
@@ -313,7 +389,7 @@ private final class Viewer {
         if needsInit || frame.sps != sps || configuredFPS != fps {
             guard frame.isKey else { waitingForKey = true; return true }
             ws.send(json: ["t": "init", "codec": frame.codec, "w": frame.width, "h": frame.height, "fps": fps])
-            ws.send(binary: FMP4Muxer.initSegment(for: frame))
+            sendBinary(FMP4Muxer.initSegment(for: frame), now: now)
             muxer = FMP4Muxer(fps: fps)
             sps = frame.sps
             configuredFPS = fps
@@ -324,7 +400,7 @@ private final class Viewer {
             guard frame.isKey else { return true }
             waitingForKey = false
         }
-        ws.send(binary: muxer.mediaSegment(for: frame))
+        sendBinary(muxer.mediaSegment(for: frame), now: now)
         return false
     }
 }
